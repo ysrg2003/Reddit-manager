@@ -36,10 +36,15 @@ on:
         type: boolean
         default: false
       run_gemini_probe:
-        description: "Run one Gemini URL Context probe on a public LinkedIn URL"
+        description: "Run one Gemini URL Context probe on a public URL"
         required: false
         type: boolean
         default: false
+      gemini_test_url:
+        description: "Public URL for the Gemini URL Context probe"
+        required: false
+        type: string
+        default: "https://www.linkedin.com/posts/simonlunnprofile_turbocoding-ai-nocode-activity-7457934952937013249-VggA"
 
 jobs:
   offline-tests:
@@ -128,7 +133,7 @@ jobs:
       - name: Run one Gemini URL Context probe
         env:
           GEMINI_API_KEY: ${{ secrets.Gemini_API_key }}
-          GEMINI_TEST_URL: https://www.linkedin.com/posts/simonlunnprofile_turbocoding-ai-nocode-activity-7457934952937013249-VggA
+          GEMINI_TEST_URL: ${{ inputs.gemini_test_url }}
           GEMINI_OUTPUT_DIR: artifacts/gemini-url-context
         run: python scripts/gemini_url_context_probe.py
       - name: Upload Gemini report
