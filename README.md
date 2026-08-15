@@ -10,7 +10,7 @@ Reddit's current Data API guidance says that clients must authenticate with a re
 
 The preferred fallback is Brave Search API when a valid key is available under its published free monthly credit. Brave's official page currently advertises $5 in free monthly credits, automatically applied to the account, and a published price of $5 per 1,000 requests. This is a quota, not permission to rotate accounts or evade limits. Use one account within its terms and allowance.
 
-ScraperAPI can be configured as a direct Reddit transport when you have an authorized free plan or trial. A key pool is accepted for deterministic failover only when a particular key is rejected as invalid or unauthorized. A `429` response is treated as quota/rate-limit exhaustion: the request stops and no other key is tried. This prevents the router from becoming a quota-evasion mechanism.
+ScraperAPI can be configured as a direct Reddit transport when you have an authorized free plan or trial. In this project, ScraperAPI searches Reddit's public HTML search page rather than Reddit's `/search.json` route: the JSON route repeatedly returned provider HTTP 500, while the HTML route returned HTTP 200 and recognizable post links. The collector therefore emits listing-level community signals without pretending that it has comments or independently verified facts. A key pool is accepted for deterministic failover only when a particular key is rejected as invalid or unauthorized. A `429` response is treated as quota/rate-limit exhaustion: the request stops and no other key is tried. This prevents the router from becoming a quota-evasion mechanism.
 
 ## What changed
 
@@ -20,7 +20,7 @@ The current version also adds four provider modes:
 
 | Provider | Default | Use |
 |---|---:|---|
-| `scraperapi` | Yes | Use ScraperAPI with one key or an authorized invalid-key failover pool |
+| `scraperapi` | Yes | Use ScraperAPI HTML search with one key or an authorized invalid-key failover pool |
 | `auto` | No | Use configured ScraperAPI, then Brave, then an explicit direct route; otherwise return a warning |
 | `brave` | No | Search the web for Reddit URLs and snippets without using `oauth.reddit.com` |
 | `reddit` | No | Use direct Reddit JSON only when `REDDIT_DIRECT_ENABLED=true` and an authorized route is actually available |
@@ -119,7 +119,7 @@ Do not configure both a free fallback and a paid proxy as if they were equivalen
 
 ## Research interpretation rules
 
-Use `community_signal` for a full Reddit post, `user_report` for a Reddit comment, and `community_search_snippet` for a Brave-discovered snippet. These labels describe the source layer; they do not indicate that the statement is true.
+Use `community_signal` for a full Reddit post, `community_signal_listing` for a ScraperAPI HTML search result, `user_report` for a Reddit comment, and `community_search_snippet` for a Brave-discovered snippet. These labels describe the source layer; they do not indicate that the statement is true.
 
 When transforming results into an article, keep the exact URL, retrieval time, original wording, and interpretation together. Separate three layers:
 
@@ -133,7 +133,9 @@ Never present another Reddit user's experience as Yusuf's experience. If evidenc
 
 | Symptom | Likely cause | Recovery |
 |---|---|---|
-| `403` from Reddit | Unauthenticated or blocked Data API traffic | Keep direct transport disabled; use the configured free-credit search provider or an authorized route |
+| `403` from Reddit | Unauthenticated or blocked Data API traffic | Keep direct transport disabled; use ScraperAPI HTML search or the configured free-credit search provider |
+| ScraperAPI `500` for `/search.json` but `200` for `/search/` | Reddit JSON route fails through the proxy while the HTML route works | Keep the ScraperAPI HTML transport enabled; do not switch back to `/search.json` for proxy searches |
+| ScraperAPI HTML `200` but zero posts | Reddit returned a shell or changed its markup | Inspect the safe diagnosis artifact, update the HTML selectors, and keep the result as a warning until parser tests pass |
 | `oauth.reddit.com` unavailable | Network or regional block | Do not retry indefinitely; use Brave discovery or another permitted source |
 | Brave key missing | No fallback provider configured | Add `BRAVE_SEARCH_API_KEY` to the execution environment, or continue without Reddit evidence |
 | Brave `401`/`403` | Invalid key, plan, or provider restriction | Check the provider dashboard and terms; do not create accounts to evade the restriction |
