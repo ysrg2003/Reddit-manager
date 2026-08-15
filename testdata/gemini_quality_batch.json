@@ -1,0 +1,62 @@
+[
+  {
+    "url": "https://services.google.com/fh/files/misc/2025_state_of_ai_assisted_software_development.pdf",
+    "source_type": "primary_research_report",
+    "publisher": "Google / DORA",
+    "role": "research evidence"
+  },
+  {
+    "url": "https://research.google/pubs/dora-2025-state-of-ai-assisted-software-development-report/",
+    "source_type": "first_party_research_landing_page",
+    "publisher": "Google Research",
+    "role": "research metadata"
+  },
+  {
+    "url": "https://dora.dev/dora-report-2025",
+    "source_type": "research_program_report",
+    "publisher": "DORA",
+    "role": "research evidence"
+  },
+  {
+    "url": "https://csrc.nist.gov/Projects/ssdf",
+    "source_type": "government_framework",
+    "publisher": "NIST",
+    "role": "secure development guidance"
+  },
+  {
+    "url": "https://csrc.nist.gov/pubs/sp/800/218/a/final",
+    "source_type": "government_special_publication",
+    "publisher": "NIST",
+    "role": "generative AI security guidance"
+  },
+  {
+    "url": "https://survey.stackoverflow.co/2025/ai",
+    "source_type": "first_party_developer_survey",
+    "publisher": "Stack Overflow",
+    "role": "developer usage and sentiment"
+  },
+  {
+    "url": "https://survey.stackoverflow.co/2025",
+    "source_type": "first_party_developer_survey",
+    "publisher": "Stack Overflow",
+    "role": "developer survey context"
+  },
+  {
+    "url": "https://github.com/StackExchange/Survey",
+    "source_type": "official_survey_repository",
+    "publisher": "Stack Overflow / GitHub",
+    "role": "survey methodology and archive"
+  },
+  {
+    "url": "https://docs.github.com/en/copilot/concepts/agents/cloud-agent/about-cloud-agent",
+    "source_type": "official_product_documentation",
+    "publisher": "GitHub",
+    "role": "first_party capability and limitation"
+  },
+  {
+    "url": "https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/",
+    "source_type": "community_security_guidance",
+    "publisher": "OWASP GenAI Security Project",
+    "role": "LLM security risks and controls"
+  }
+]

@@ -45,6 +45,16 @@ on:
         required: false
         type: string
         default: "https://www.linkedin.com/posts/simonlunnprofile_turbocoding-ai-nocode-activity-7457934952937013249-VggA"
+      run_gemini_batch:
+        description: "Run one Gemini URL Context batch after quality filtering"
+        required: false
+        type: boolean
+        default: false
+      gemini_urls_file:
+        description: "Repository JSON file containing candidate URLs for the Gemini batch"
+        required: false
+        type: string
+        default: "testdata/gemini_quality_batch.json"
 
 jobs:
   offline-tests:
@@ -141,6 +151,31 @@ jobs:
         with:
           name: gemini-url-context-${{ github.run_id }}
           path: artifacts/gemini-url-context/
+          if-no-files-found: error
+
+  gemini-url-context-batch:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_gemini_batch == true }}
+    needs: offline-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install requests
+        run: python -m pip install 'requests>=2.31,<3'
+      - name: Run quality-filtered Gemini URL Context batch
+        env:
+          GEMINI_API_KEY: ${{ secrets.Gemini_API_key }}
+          GEMINI_OUTPUT_DIR: artifacts/gemini-url-context-batch
+        run: python scripts/gemini_url_context_batch_probe.py --input "${{ inputs.gemini_urls_file }}" --limit 10
+      - name: Upload Gemini batch report
+        uses: actions/upload-artifact@v4
+        with:
+          name: gemini-url-context-batch-${{ github.run_id }}
+          path: artifacts/gemini-url-context-batch/
           if-no-files-found: error
 
   optional-network-search:
