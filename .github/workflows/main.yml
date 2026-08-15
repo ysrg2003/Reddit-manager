@@ -15,6 +15,11 @@ on:
         required: false
         type: string
         default: "ethical automation"
+      run_corpus:
+        description: "Run the bounded ScraperAPI probe for all 50 article queries"
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   offline-tests:
@@ -44,11 +49,41 @@ jobs:
         run: python -m pip install -r requirements.txt
       - name: Run bounded network search
         env:
+          REDDIT_PROVIDER: scraperapi
+          REDDIT_DIRECT_ENABLED: "false"
           REDDIT_REQUEST_DELAY: "2"
+          SCRAPER_API_KEYS_JSON: ${{ secrets.SCRAPER_API_KEYS_JSON }}
           TEST_KEYWORD: ${{ inputs.keyword }}
-        run: python test_runner.py --query "$TEST_KEYWORD" --pages 1 --posts-per-page 5 --comments-limit 25 --output-dir artifacts
+        run: python test_runner.py --query "$TEST_KEYWORD" --provider scraperapi --pages 1 --posts-per-page 5 --comments-limit 25 --output-dir artifacts
       - name: Upload evidence artifacts
         uses: actions/upload-artifact@v4
         with:
           name: reddit-evidence-${{ github.run_id }}
           path: artifacts/
+
+  corpus-scraperapi-probe:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_corpus == true }}
+    needs: offline-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Run 50-article ScraperAPI probe
+        env:
+          REDDIT_PROVIDER: scraperapi
+          REDDIT_DIRECT_ENABLED: "false"
+          REDDIT_REQUEST_DELAY: "1.5"
+          SCRAPER_API_KEYS_JSON: ${{ secrets.SCRAPER_API_KEYS_JSON }}
+        run: python scripts/corpus_scraperapi_probe.py --queries testdata/corpus_queries.json --output-dir artifacts/corpus --pages 1 --posts-per-page 1 --comments-limit 0
+      - name: Upload safe corpus report
+        uses: actions/upload-artifact@v4
+        with:
+          name: corpus-scraperapi-report-${{ github.run_id }}
+          path: artifacts/corpus/
+          if-no-files-found: error

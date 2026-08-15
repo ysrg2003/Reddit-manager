@@ -1,0 +1,356 @@
+{
+  "schema_version": "1.0",
+  "article_count": 50,
+  "articles": [
+    {
+      "article_file": "article_001_the_vibe_coding_trap.md",
+      "title": "The Vibe Coding Trap: Why Building Everything at Once Made My Project Harder to Fix",
+      "section": "AI-Assisted Building",
+      "subtitle": "How building an AI-assisted project as one connected block made the next change harder to understand.",
+      "query": "vibe coding trap why building assisted"
+    },
+    {
+      "article_file": "article_002_xiangqi_lab_case_study.md",
+      "title": "What Building Xiangqi Lab Taught Me About Small Automated Systems",
+      "section": "Xiangqi Lab",
+      "subtitle": "A first-person case study of a working production system, a very small audience, and the difference between system health and audience growth.",
+      "query": "what building xiangqi lab taught"
+    },
+    {
+      "article_file": "article_003_root_cause_debugging.md",
+      "title": "Root-Cause Debugging for AI-Built Projects: Start With the Failure, Not the Feature",
+      "section": "Root-Cause Debugging",
+      "subtitle": "A practical method for tracing an AI-built project from its visible failure to the first broken expectation.",
+      "query": "root-cause debugging ai-built projects start root cause"
+    },
+    {
+      "article_file": "article_004_reusable_system_test.md",
+      "title": "The Reusable System Test: When Should a Feature Become Its Own Module?",
+      "section": "AI-Assisted Building",
+      "subtitle": "A practical test for deciding whether a feature has a stable responsibility and boundary worth extracting.",
+      "query": "reusable system test should feature assisted building"
+    },
+    {
+      "article_file": "article_005_digital_assets_without_hype.md",
+      "title": "Digital Assets Without the Passive-Income Fantasy",
+      "section": "Digital Assets Without Hype",
+      "subtitle": "Why the useful part of a digital asset is stored work that helps more than once—not a promise of effortless income.",
+      "query": "digital assets passive-income fantasy"
+    },
+    {
+      "article_file": "article_006_smaller_files_easier_to_trust.md",
+      "title": "Why Smaller Files Are Easier to Trust",
+      "section": "AI-Assisted Building",
+      "subtitle": "In AI-assisted projects, a smaller responsibility is not just easier to read. It is easier to verify, change, and recover when something goes wrong.",
+      "query": "why smaller files easier trust assisted building"
+    },
+    {
+      "article_file": "article_007_build_one_working_section.md",
+      "title": "Build One Working Section Before You Add the Next",
+      "section": "AI-Assisted Building",
+      "subtitle": "A project becomes easier to trust when each section proves its responsibility before the next section depends on it.",
+      "query": "build one working section add assisted building"
+    },
+    {
+      "article_file": "article_008_document_before_ai_change.md",
+      "title": "What to Document Before Asking AI to Change Your Project",
+      "section": "AI-Assisted Building",
+      "subtitle": "The quality of an AI-assisted change often depends on the context you provide before asking for code.",
+      "query": "what document asking change your assisted building"
+    },
+    {
+      "article_file": "article_009_verify_ai_generated_section.md",
+      "title": "How to Verify an AI-Generated Section Without Reading Everything",
+      "section": "AI-Assisted Building",
+      "subtitle": "Verification does not require understanding every line. It requires choosing the right boundary, inputs, outputs, and failure cases.",
+      "query": "verify ai-generated section reading everything assisted building"
+    },
+    {
+      "article_file": "article_010_smallest_useful_architecture.md",
+      "title": "The Smallest Useful Architecture for a Solo Builder",
+      "section": "AI-Assisted Building",
+      "subtitle": "The best architecture for a one-person project is not the one with the most layers. It is the smallest structure that keeps responsibilities clear and changes recoverable.",
+      "query": "smallest useful architecture solo builder assisted building"
+    },
+    {
+      "article_file": "article_011_best_first_automation.md",
+      "title": "The Best First Automation Is Usually Not the Most Impressive One",
+      "section": "Automation & Systems",
+      "subtitle": "A useful first automation removes a repeated responsibility without hiding the work it performs.",
+      "query": "best first automation usually not systems"
+    },
+    {
+      "article_file": "article_012_find_waiting_time.md",
+      "title": "How to Find Waiting Time Inside a Workflow",
+      "section": "Automation & Systems",
+      "subtitle": "The slowest part of a workflow is not always the part that takes the most clicks. It may be the time spent waiting for a decision, a file, a response, or a retry.",
+      "query": "find waiting time inside workflow automation systems"
+    },
+    {
+      "article_file": "article_013_automated_content_pipeline_verification.md",
+      "title": "What an Automated Content Pipeline Actually Needs to Verify",
+      "section": "Automation & Systems",
+      "subtitle": "Producing text is only one step. A reliable content workflow must also verify sources, transformations, formatting, and human approval.",
+      "query": "what automated content pipeline actually automation systems"
+    },
+    {
+      "article_file": "article_014_manual_first_automated_second.md",
+      "title": "Manual First, Automated Second: A Safer Way to Build Workflows",
+      "section": "Automation & Systems",
+      "subtitle": "Performing a workflow manually once can reveal the decisions that an automation would otherwise hide.",
+      "query": "manual first automated second safer automation systems"
+    },
+    {
+      "article_file": "article_015_when_automation_adds_complexity.md",
+      "title": "When Automation Adds Complexity Instead of Removing It",
+      "section": "Automation & Systems",
+      "subtitle": "An automated workflow is not automatically simpler. Sometimes it replaces a visible manual step with hidden maintenance, state, and recovery work.",
+      "query": "automation adds complexity instead removing systems"
+    },
+    {
+      "article_file": "article_016_repeated_work_reusable_system.md",
+      "title": "Turning Repeated Work Into a Reusable System",
+      "section": "Automation & Systems",
+      "subtitle": "A repeated task becomes a system when its inputs, outputs, decisions, and failure behavior can be explained and reused.",
+      "query": "turning repeated work into reusable automation systems"
+    },
+    {
+      "article_file": "article_017_script_vs_workflow.md",
+      "title": "The Difference Between a Script and a Workflow",
+      "section": "Automation & Systems",
+      "subtitle": "A script performs an action. A workflow explains what should happen before, during, and after that action.",
+      "query": "difference between script workflow automation systems"
+    },
+    {
+      "article_file": "article_018_human_checkpoint.md",
+      "title": "How to Design a Human Checkpoint That Actually Helps",
+      "section": "Automation & Systems",
+      "subtitle": "A human review is useful when it asks focused questions and changes the next state. It is not useful when it only confirms that a process ran.",
+      "query": "design human checkpoint that actually automation systems"
+    },
+    {
+      "article_file": "article_019_measure_automation_success.md",
+      "title": "What to Measure Before Calling an Automation Successful",
+      "section": "Automation & Systems",
+      "subtitle": "Fewer clicks are not enough. A useful automation should improve the responsibility, reliability, visibility, or recovery of the workflow.",
+      "query": "what measure calling automation successful systems"
+    },
+    {
+      "article_file": "article_020_keep_automation_observable.md",
+      "title": "How to Keep an Automated System Observable",
+      "section": "Automation & Systems",
+      "subtitle": "A system is easier to trust when it can show what it received, what it completed, where it stopped, and what should happen next.",
+      "query": "keep automated system observable automation systems"
+    },
+    {
+      "article_file": "article_022_symptom_or_root_cause.md",
+      "title": "Symptom or Root Cause? A Simple Debugging Split",
+      "section": "Root-Cause Debugging",
+      "subtitle": "Before changing the code, separate what you can see from what must be true inside the system for the failure to occur.",
+      "query": "symptom root cause simple debugging"
+    },
+    {
+      "article_file": "article_023_visible_error_wrong_layer.md",
+      "title": "Why Fixing the Visible Error Can Create a Bigger One",
+      "section": "Root-Cause Debugging",
+      "subtitle": "A patch can remove the message on the screen while leaving the condition that caused the failure untouched.",
+      "query": "why fixing visible error can root cause"
+    },
+    {
+      "article_file": "article_024_smallest_test_failure_location.md",
+      "title": "The Smallest Test That Can Tell You Where the Failure Is",
+      "section": "Root-Cause Debugging",
+      "subtitle": "A diagnostic test is valuable when it separates two plausible explanations, not when it merely repeats the failure.",
+      "query": "smallest test that can tell root cause"
+    },
+    {
+      "article_file": "article_025_keep_ai_from_wrong_layer.md",
+      "title": "How to Keep an AI Assistant From Patching the Wrong Layer",
+      "section": "Root-Cause Debugging",
+      "subtitle": "The best debugging prompt does not begin with “fix it.” It begins by defining the failure path, the protected behavior, and the evidence needed first.",
+      "query": "keep assistant patching wrong layer root cause"
+    },
+    {
+      "article_file": "article_026_checkpoint_workflow_fragile_projects.md",
+      "title": "A Checkpoint-Based Workflow for Fragile Projects",
+      "section": "Root-Cause Debugging",
+      "subtitle": "Fragile projects become easier to change when every important stage leaves evidence before the next stage begins.",
+      "query": "checkpoint-based workflow fragile projects root cause"
+    },
+    {
+      "article_file": "article_027_failure_record.md",
+      "title": "What to Record After a Failure So You Do Not Repeat It",
+      "section": "Root-Cause Debugging",
+      "subtitle": "A failure becomes useful when the next attempt contains more information than the previous one.",
+      "query": "what record after failure not root cause"
+    },
+    {
+      "article_file": "article_028_debug_intermittent_system.md",
+      "title": "Debugging a System That Works Only Sometimes",
+      "section": "Root-Cause Debugging",
+      "subtitle": "Intermittent behavior is difficult because the system may be correct under one state and wrong under another. The first task is to make the state visible.",
+      "query": "debugging system that works only root cause"
+    },
+    {
+      "article_file": "article_029_new_error_or_new_mask.md",
+      "title": "The Difference Between a New Error and an Old Error With a New Mask",
+      "section": "Root-Cause Debugging",
+      "subtitle": "A changed error message does not always mean that the system reached a new failure. Sometimes the same root condition is only appearing through a different path.",
+      "query": "difference between new error old root cause"
+    },
+    {
+      "article_file": "article_030_when_rebuild_one_section.md",
+      "title": "When to Stop Debugging and Rebuild One Section",
+      "section": "Root-Cause Debugging",
+      "subtitle": "Rebuilding is not always a failure. Sometimes it is the smallest honest way to restore a boundary that repeated patches have erased.",
+      "query": "stop debugging rebuild one section root cause"
+    },
+    {
+      "article_file": "article_032_three_early_xiangqi_videos.md",
+      "title": "What Three Early Xiangqi Lab Videos Can and Cannot Tell Me",
+      "section": "Xiangqi Lab",
+      "subtitle": "Early numbers can describe what happened. They cannot, by themselves, prove what the project will become.",
+      "query": "what three early xiangqi lab"
+    },
+    {
+      "article_file": "article_033_specialized_cultural_channel.md",
+      "title": "Building an Educational Channel Around a Specialized Cultural Topic",
+      "section": "Xiangqi Lab",
+      "subtitle": "Teaching a topic that many viewers do not already know requires more than explaining the subject. It requires building a path into it.",
+      "query": "building educational channel around specialized xiangqi lab"
+    },
+    {
+      "article_file": "article_034_hidden_work_automated_video.md",
+      "title": "The Hidden Work Behind an Automated Video",
+      "section": "Xiangqi Lab",
+      "subtitle": "A finished video is the visible output of a chain that includes research, writing, assets, rendering, review, metadata, and recovery.",
+      "query": "hidden work behind automated video xiangqi lab"
+    },
+    {
+      "article_file": "article_035_organic_reach_measurement.md",
+      "title": "Why Organic Reach Is a Measurement Problem Before It Is a Motivation Problem",
+      "section": "Xiangqi Lab",
+      "subtitle": "When a small channel receives little reach, the first useful response is not a dramatic conclusion. It is a clearer experiment.",
+      "query": "why organic reach measurement problem xiangqi lab"
+    },
+    {
+      "article_file": "article_036_feature_to_reusable_system.md",
+      "title": "From Project Feature to Reusable System: A Xiangqi Lab Case",
+      "section": "Xiangqi Lab",
+      "subtitle": "A feature becomes reusable only after its responsibility, inputs, outputs, and failure cases are understood in the project where it was built.",
+      "query": "project feature reusable system xiangqi lab"
+    },
+    {
+      "article_file": "article_037_rebuild_xiangqi_system_today.md",
+      "title": "What I Would Change If I Rebuilt the System Today",
+      "section": "Xiangqi Lab",
+      "subtitle": "Rebuilding a project in hindsight is useful only when it produces better decisions for the next version, not a fictional story about what should have been obvious.",
+      "query": "what would change rebuilt system xiangqi lab"
+    },
+    {
+      "article_file": "article_038_teaching_xiangqi_with_ai.md",
+      "title": "Teaching a Traditional Game With Modern AI Tools",
+      "section": "Xiangqi Lab",
+      "subtitle": "AI can help organize and produce an explanation, but it cannot replace the responsibility to teach the subject accurately and respectfully.",
+      "query": "teaching traditional game modern tools xiangqi lab"
+    },
+    {
+      "article_file": "article_039_production_vs_judgment.md",
+      "title": "The Difference Between Automating Production and Automating Judgment",
+      "section": "Xiangqi Lab",
+      "subtitle": "A system can automate the repeated work around a lesson without deciding what the lesson should mean.",
+      "query": "difference between automating production automating xiangqi lab"
+    },
+    {
+      "article_file": "article_040_xiangqi_testable_system.md",
+      "title": "How a Small Media Project Becomes a Testable System",
+      "section": "Xiangqi Lab",
+      "subtitle": "A media project becomes easier to improve when its ideas, inputs, outputs, and decisions are treated as small experiments rather than one large ambition.",
+      "query": "small media project becomes testable xiangqi lab"
+    },
+    {
+      "article_file": "article_042_digital_asset_needs_rescue.md",
+      "title": "A Digital Asset Is Not Passive When It Still Needs Rescue Every Day",
+      "section": "Digital Assets Without Hype",
+      "subtitle": "A file, template, or guide becomes valuable when it can deliver a repeatable outcome without requiring the creator to repair it after every use.",
+      "query": "digital asset not passive still assets"
+    },
+    {
+      "article_file": "article_043_template_vs_system.md",
+      "title": "The Difference Between a Template and a Real System",
+      "section": "Digital Assets Without Hype",
+      "subtitle": "A template gives someone a starting shape. A system explains how to move from an input to an outcome, including what to do when the path changes.",
+      "query": "difference between template real system digital assets"
+    },
+    {
+      "article_file": "article_044_build_asset_repeated_problem.md",
+      "title": "How to Build an Asset Around a Repeated Problem",
+      "section": "Digital Assets Without Hype",
+      "subtitle": "The strongest small digital products often begin as a repeated question, correction, or piece of work—not as a guess about what the market might buy.",
+      "query": "build asset around repeated problem digital assets"
+    },
+    {
+      "article_file": "article_045_distribution_is_product.md",
+      "title": "Why Distribution Is Part of the Product",
+      "section": "Digital Assets Without Hype",
+      "subtitle": "A useful asset that nobody can discover, understand, or trust is not a complete product yet.",
+      "query": "why distribution part product digital assets"
+    },
+    {
+      "article_file": "article_046_ethical_monetization_uncertain_results.md",
+      "title": "What Ethical Monetization Means When Results Are Uncertain",
+      "section": "Digital Assets Without Hype",
+      "subtitle": "Ethical monetization does not require pretending that outcomes are guaranteed. It requires making the evidence, limits, incentives, and risks visible.",
+      "query": "what ethical monetization means results digital assets"
+    },
+    {
+      "article_file": "article_047_first_small_asset_from_workflow.md",
+      "title": "The First Small Asset I Would Build From a Working Workflow",
+      "section": "Digital Assets Without Hype",
+      "subtitle": "The first digital product should usually be a clear artifact extracted from repeated work, not a large course built from a theory.",
+      "query": "first small asset would build digital assets"
+    },
+    {
+      "article_file": "article_048_debugging_habit_to_worksheet.md",
+      "title": "How to Turn a Debugging Habit Into a Worksheet",
+      "section": "Digital Assets Without Hype",
+      "subtitle": "A worksheet is useful when it preserves the questions that lead to a better diagnosis, not when it turns debugging into empty box-checking.",
+      "query": "turn debugging habit into worksheet digital assets"
+    },
+    {
+      "article_file": "article_049_useful_affiliate_recommendation.md",
+      "title": "When an Affiliate Recommendation Is Actually Useful",
+      "section": "Digital Assets Without Hype",
+      "subtitle": "A recommendation becomes useful when it helps the reader make a better decision, not when it only creates a commission opportunity.",
+      "query": "affiliate recommendation actually useful digital assets"
+    },
+    {
+      "article_file": "article_050_smallest_product_teach.md",
+      "title": "Build the Smallest Product That Can Teach You Something",
+      "section": "Digital Assets Without Hype",
+      "subtitle": "A first product does not need to maximize revenue immediately. It needs to create useful evidence about a repeated problem, a real user, and a workable solution.",
+      "query": "build smallest product that can digital assets"
+    },
+    {
+      "article_file": "article_better_change_request_ai.md",
+      "title": "How to Write a Better Change Request for an AI Coding Assistant",
+      "section": "AI-Assisted Building",
+      "subtitle": "A good change request gives the assistant a smaller problem, a clearer boundary, and a way to prove that the result is correct.",
+      "query": "write better change request coding assisted building"
+    },
+    {
+      "article_file": "article_cost_of_changing_all_at_once.md",
+      "title": "The Cost of Changing a Project You Built All at Once",
+      "section": "AI-Assisted Building",
+      "subtitle": "The first version may feel fast, but the real cost appears when a small change has to travel through every connected assumption.",
+      "query": "cost changing project built all assisted building"
+    },
+    {
+      "article_file": "article_first_working_version_not_finished.md",
+      "title": "The First Working Version Is Not the Finished System",
+      "section": "AI-Assisted Building",
+      "subtitle": "A working first version proves that one path is possible. It does not prove that the project is maintainable, observable, or ready for every real case.",
+      "query": "first working version not finished assisted building"
+    }
+  ]
+}
