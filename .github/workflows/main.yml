@@ -20,6 +20,16 @@ on:
         required: false
         type: boolean
         default: false
+      run_async_probe:
+        description: "Run one ScraperAPI Async probe and poll every 30 seconds"
+        required: false
+        type: boolean
+        default: false
+      async_article_number:
+        description: "Article number for the single Async probe"
+        required: false
+        type: string
+        default: "1"
 
 jobs:
   offline-tests:
@@ -60,6 +70,36 @@ jobs:
         with:
           name: reddit-evidence-${{ github.run_id }}
           path: artifacts/
+
+  async-scraperapi-single-probe:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_async_probe == true }}
+    needs: offline-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Submit one Async job and poll every 30 seconds
+        env:
+          SCRAPER_API_KEYS_JSON: ${{ secrets.SCRAPER_API_KEYS_JSON }}
+        run: >-
+          python scripts/scraperapi_async_probe.py
+          --queries testdata/corpus_queries.json
+          --article-number "${{ inputs.async_article_number }}"
+          --output-dir artifacts/async-probe
+          --poll-seconds 30
+          --max-wait-seconds 1800
+      - name: Upload safe Async probe report
+        uses: actions/upload-artifact@v4
+        with:
+          name: scraperapi-async-probe-${{ github.run_id }}
+          path: artifacts/async-probe/
+          if-no-files-found: error
 
   corpus-scraperapi-probe:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_corpus == true }}
