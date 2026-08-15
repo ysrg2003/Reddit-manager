@@ -20,6 +20,12 @@ class FakeResponse:
         return self.payload
 
 
+class TextResponse:
+    def __init__(self, text, status_code=200):
+        self.text = text
+        self.status_code = status_code
+
+
 class RedditManagerTests(unittest.TestCase):
     def make_manager(self, responses, **config_overrides):
         session = Mock()
@@ -108,7 +114,7 @@ class RedditManagerTests(unittest.TestCase):
 
     def test_scraper_key_failover_only_after_key_rejection(self):
         manager, session = self.make_manager(
-            [FakeResponse({}, 403), FakeResponse({"data": {"children": [], "after": None}})],
+            [FakeResponse({}, 403), TextResponse("")],
             direct_enabled=False,
             scraper_api_keys=[("scraper-1", "placeholder-1"), ("scraper-2", "placeholder-2")],
         )
@@ -116,6 +122,25 @@ class RedditManagerTests(unittest.TestCase):
         self.assertEqual(bundle["transport"], "scraperapi")
         self.assertEqual(session.get.call_count, 2)
         self.assertEqual(session.get.call_args_list[0].args[0], "https://api.scraperapi.com")
+
+    def test_scraperapi_html_listing_parses_posts(self):
+        html = '''
+        <shreddit-post post-id="abc" subreddit-prefixed-name="r/test"
+          content-href="/r/test/comments/abc/example/" post-title="Example title" score="7" comment-count="2">
+        </shreddit-post>
+        '''
+        manager, session = self.make_manager(
+            [TextResponse(html)],
+            direct_enabled=False,
+            scraper_api_keys=[("scraper-1", "placeholder-1")],
+        )
+        bundle = manager.search_listing("example", posts_per_page=1)
+        self.assertEqual(bundle["transport"], "scraperapi")
+        self.assertEqual(len(bundle["posts"]), 1)
+        self.assertEqual(bundle["posts"][0]["title"], "Example title")
+        self.assertEqual(bundle["posts"][0]["url"], "https://www.reddit.com/r/test/comments/abc/example/")
+        self.assertEqual(session.get.call_args.args[0], "https://api.scraperapi.com")
+        self.assertEqual(session.get.call_args.kwargs["params"]["url"].split("?")[0], "https://www.reddit.com/search/")
 
     def test_scraper_quota_does_not_rotate_keys(self):
         manager, session = self.make_manager(

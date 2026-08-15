@@ -12,10 +12,11 @@ import json
 import os
 import re
 import time
+from html.parser import HTMLParser
 from dataclasses import dataclass, asdict, field
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urljoin
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -85,6 +86,107 @@ def _parse_secret_pool(raw: str, provider: str) -> List[Tuple[str, str]]:
                 key_id = str(item.get("id") or item.get("name") or f"{provider}-{index}")
                 result.append((key_id, str(secret).strip()))
     return result
+
+
+class _RedditSearchHTMLParser(HTMLParser):
+    """Extract public post cards from Reddit's server-rendered search HTML."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.posts: List[Dict[str, Any]] = []
+        self.current: Optional[Dict[str, Any]] = None
+        self.title_buffer: List[str] = []
+        self.capture_title = False
+
+    def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
+        values = {key: value or "" for key, value in attrs}
+        lowered = tag.lower()
+        if lowered == "shreddit-post":
+            self._finish_current()
+            self.current = values
+            self.title_buffer = []
+            self.capture_title = False
+            return
+        if self.current is None:
+            return
+        test_id = values.get("data-testid", "")
+        slot = values.get("slot", "")
+        if test_id in {"post-title", "post-title-text"} or slot == "title":
+            self.capture_title = True
+
+    def handle_data(self, data: str) -> None:
+        if self.current is not None and self.capture_title:
+            self.title_buffer.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if self.current is not None and self.capture_title and tag.lower() in {"a", "span", "h1", "h2", "h3"}:
+            self.capture_title = False
+        if tag.lower() == "shreddit-post":
+            self._finish_current()
+
+    def close(self) -> None:
+        super().close()
+        self._finish_current()
+
+    def _finish_current(self) -> None:
+        if not self.current:
+            return
+        attrs = self.current
+        title = _clean_text(attrs.get("post-title") or attrs.get("title") or " ".join(self.title_buffer))
+        permalink = _safe_permalink(
+            attrs.get("content-href") or attrs.get("permalink") or attrs.get("href") or ""
+        )
+        if title and permalink:
+            self.posts.append({
+                "post_id": _clean_text(attrs.get("post-id") or attrs.get("id")),
+                "subreddit": _clean_text(
+                    attrs.get("subreddit-prefixed-name") or attrs.get("subreddit-name") or attrs.get("subreddit")
+                ).removeprefix("r/"),
+                "title": title,
+                "text": "",
+                "author": _clean_text(attrs.get("author")),
+                "score": attrs.get("score") or attrs.get("score-value"),
+                "num_comments": attrs.get("comment-count") or attrs.get("num-comments"),
+                "url": urljoin("https://www.reddit.com", permalink),
+                "permalink": permalink,
+            })
+        self.current = None
+        self.title_buffer = []
+        self.capture_title = False
+
+
+def _parse_reddit_search_html(content: str, query: str, posts_per_page: int) -> Dict[str, Any]:
+    parser = _RedditSearchHTMLParser()
+    parser.feed(content or "")
+    parser.close()
+    posts = []
+    for item in parser.posts[: max(1, min(int(posts_per_page), 100))]:
+        posts.append({
+            "evidence_type": "community_signal_listing",
+            "post_id": item.get("post_id"),
+            "subreddit": item.get("subreddit", ""),
+            "title": item.get("title", ""),
+            "text": item.get("text", ""),
+            "author": item.get("author", ""),
+            "score": item.get("score"),
+            "num_comments": item.get("num_comments"),
+            "url": item.get("url"),
+            "permalink": item.get("permalink"),
+            "comments": [],
+            "media": [],
+            "verification_status": "unverified_user_generated_content",
+        })
+    return {
+        "schema_version": "1.1",
+        "query": query,
+        "retrieved_at": utc_now_iso(),
+        "source": "Reddit search HTML via ScraperAPI",
+        "transport": "scraperapi",
+        "evidence_policy": "Search listings are user-generated signals and remain unverified until the source page and important claims are independently checked.",
+        "parameters": {"posts_per_page": posts_per_page, "sort": "relevance", "time_window": "all"},
+        "posts": posts,
+        "warnings": [] if posts else ["ScraperAPI returned Reddit HTML but no recognizable post cards were found."],
+    }
 
 
 def _media_urls(data: Dict[str, Any]) -> List[str]:
@@ -227,6 +329,51 @@ class RedditManager:
             errors.append(f"scraperapi/{key_id}: {last_error}")
         raise RedditFetchError("; ".join(errors) or "No ScraperAPI key is configured")
 
+    def _request_scraperapi_text(self, url: str, params: Dict[str, Any]) -> str:
+        target_url = url if url.startswith("http") else f"{self.config.base_url}/{url.lstrip('/')}"
+        prepared = requests.Request("GET", target_url, params=params).prepare().url
+        errors: List[str] = []
+        for key_id, secret in self.config.scraper_api_keys:
+            try:
+                response = self.session.get(
+                    self.config.scraper_api_base,
+                    params={"api_key": secret, "url": prepared, "render": "false"},
+                    timeout=self.config.timeout,
+                    verify=self.config.verify_tls,
+                )
+                status = int(getattr(response, "status_code", 0))
+                if status == 429:
+                    raise RedditFetchError("ScraperAPI quota/rate limit reached; key failover is disabled for this response")
+                if status in {401, 403}:
+                    errors.append(f"scraperapi/{key_id}: key rejected with HTTP status {status}")
+                    continue
+                if status >= 500:
+                    raise RedditFetchError(f"retryable HTTP status {status}")
+                if status >= 400:
+                    raise RedditFetchError(f"HTTP status {status}")
+                self.last_transport = "scraperapi"
+                return response.text
+            except (requests.RequestException, RedditFetchError) as exc:
+                message = str(exc)
+                if "quota/rate limit" in message:
+                    raise RedditFetchError(message) from exc
+                if "key rejected" in message:
+                    continue
+                errors.append(f"scraperapi/{key_id}: {message}")
+                break
+        raise RedditFetchError("; ".join(errors) or "No ScraperAPI key is configured")
+
+    def _search_via_scraperapi_html(
+        self,
+        query: str,
+        posts_per_page: int = DEFAULT_POSTS_PER_PAGE,
+        sort: str = "relevance",
+        time_window: str = "all",
+    ) -> Dict[str, Any]:
+        params = {"q": query, "sort": sort, "t": time_window}
+        content = self._request_scraperapi_text("/search/", params)
+        return _parse_reddit_search_html(content, query, posts_per_page)
+
     def _request_json(self, path: str, params: Optional[Dict[str, Any]] = None) -> Any:
         url = path if path.startswith("http") else f"{self.config.base_url}/{path.lstrip('/')}"
         request_params = dict(params or {})
@@ -349,6 +496,8 @@ class RedditManager:
         query = _clean_text(query)
         if not query:
             raise ValueError("query must not be empty")
+        if self.config.scraper_api_keys and not self.config.access_token:
+            return self._search_via_scraperapi_html(query, posts_per_page=posts_per_page, sort=sort, time_window=time_window)
         params = {
             "q": query,
             "limit": max(1, min(int(posts_per_page), 100)),
@@ -409,6 +558,22 @@ class RedditManager:
         posts: List[Dict[str, Any]] = []
         after: Optional[str] = None
         warnings: List[str] = []
+        if self.config.scraper_api_keys and not self.config.access_token:
+            try:
+                return self._search_via_scraperapi_html(query, posts_per_page=posts_per_page, sort=sort, time_window=time_window)
+            except RedditFetchError as exc:
+                warnings.append(str(exc))
+                return {
+                    "schema_version": "1.1",
+                    "query": query,
+                    "retrieved_at": utc_now_iso(),
+                    "source": "Reddit search HTML via ScraperAPI",
+                    "transport": "scraperapi",
+                    "evidence_policy": "Reddit search listings are user-generated signals and remain unverified until independently checked.",
+                    "parameters": {"pages": pages, "posts_per_page": posts_per_page, "comments_limit": comments_limit, "sort": sort, "time_window": time_window},
+                    "posts": [],
+                    "warnings": warnings,
+                }
         if not self.config.direct_enabled and not self.config.scraper_api_keys:
             return {
                 "schema_version": "1.1",
