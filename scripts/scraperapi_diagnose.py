@@ -55,6 +55,7 @@ def target_urls() -> list[tuple[str, str]]:
         ("reddit-html-render", f"https://www.reddit.com/search/?{html_query}"),
         ("reddit-post-html", post_url),
         ("reddit-post-json", post_url.rstrip("/") + "/.json?raw_json=1&limit=100"),
+        ("reddit-post-json-premium", post_url.rstrip("/") + "/.json?raw_json=1&limit=100"),
         ("reddit-post-autoparse", post_url),
     ]
 
@@ -146,6 +147,7 @@ def main() -> int:
                     "url": target,
                     "render": "true" if label == "reddit-html-render" else "false",
                     "autoparse": "true" if label == "reddit-post-autoparse" else "false",
+                    "premium": "true" if label == "reddit-post-json-premium" else "false",
                 },
                 timeout=args.timeout,
                 verify=True,
@@ -161,7 +163,7 @@ def main() -> int:
             }
             if label in {"reddit-html", "reddit-html-render", "reddit-post-html"} and response.status_code == 200:
                 result["html_structure"] = summarize_html(response.text)
-            if label in {"reddit-post-autoparse", "reddit-post-json"} and response.status_code == 200:
+            if label in {"reddit-post-autoparse", "reddit-post-json", "reddit-post-json-premium"} and response.status_code == 200:
                 try:
                     parsed = response.json()
                     result["json_type"] = type(parsed).__name__
