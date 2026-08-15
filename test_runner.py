@@ -1,23 +1,62 @@
-import os
+"""CLI smoke runner for a deliberate Reddit search.
+
+Network access is explicit: this script is for manual runs, not unit tests.
+"""
+
+from __future__ import annotations
+
+import argparse
 import json
+import os
+from pathlib import Path
 
-from reddit_manager import get_community_intel
+from reddit_manager import RedditManager, generate_writer_brief
 
-q = os.getenv("TEST_KEYWORD")
 
-print("Searching for:", q)
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Collect Reddit research evidence")
+    parser.add_argument("--query", default=os.getenv("TEST_KEYWORD"), help="Reddit search query")
+    parser.add_argument("--output-dir", default="artifacts", help="Directory for evidence artifacts")
+    parser.add_argument("--pages", type=int, default=2)
+    parser.add_argument("--posts-per-page", type=int, default=10)
+    parser.add_argument("--comments-limit", type=int, default=100)
+    parser.add_argument("--sort", default="relevance", choices=["relevance", "hot", "top", "new", "comments"])
+    parser.add_argument("--time-window", default="all", choices=["all", "year", "month", "week", "day"])
+    return parser.parse_args()
 
-text, media = get_community_intel(q)
 
-print("=== TEXT LENGTH ===", len(text))
-print("=== MEDIA COUNT ===", len(media))
+def main() -> int:
+    args = parse_args()
+    if not args.query or not args.query.strip():
+        raise SystemExit("Provide --query or TEST_KEYWORD before a network run.")
 
-# -------- Save Evidence Text --------
-with open("reddit_evidence.txt", "w", encoding="utf-8") as f:
-    f.write(text)
+    bundle = RedditManager().search(
+        args.query,
+        pages=args.pages,
+        posts_per_page=args.posts_per_page,
+        comments_limit=args.comments_limit,
+        sort=args.sort,
+        time_window=args.time_window,
+    )
+    output = Path(args.output_dir)
+    output.mkdir(parents=True, exist_ok=True)
+    (output / "reddit_evidence.json").write_text(
+        json.dumps(bundle, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    (output / "reddit_evidence.md").write_text(generate_writer_brief(bundle), encoding="utf-8")
 
-# -------- Save Media JSON --------
-with open("reddit_media.json", "w", encoding="utf-8") as f:
-    json.dump(media, f, indent=2, ensure_ascii=False)
+    media = []
+    for post in bundle.get("posts", []):
+        for url in post.get("media", []):
+            media.append({"url": url, "source": post.get("url"), "evidence_status": "unverified_user_generated_content"})
+    (output / "reddit_media.json").write_text(json.dumps(media, ensure_ascii=False, indent=2), encoding="utf-8")
 
-print("Files saved successfully.")
+    print(f"Collected {len(bundle.get('posts', []))} threads for: {args.query}")
+    print(f"Artifacts: {output / 'reddit_evidence.json'}, {output / 'reddit_evidence.md'}")
+    if bundle.get("warnings"):
+        print(f"Warnings: {len(bundle['warnings'])}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

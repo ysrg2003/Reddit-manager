@@ -1,43 +1,54 @@
-name: Reddit Manager - Manual Test
+name: Reddit Manager CI
 
 on:
+  push:
+  pull_request:
   workflow_dispatch:
     inputs:
+      run_network:
+        description: "Run one deliberate network search after offline tests"
+        required: false
+        type: boolean
+        default: false
       keyword:
-        description: "Enter the search keyword"
-        required: true
-        default: "Sora 2 OpenAI discussion"
+        description: "Search keyword used only when run_network is true"
+        required: false
+        type: string
+        default: "ethical automation"
 
 jobs:
-  reddit-manager-test:
+  offline-tests:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
-
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
-
+          python-version: "3.11"
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install requests regex
+        run: python -m pip install -r requirements.txt
+      - name: Run offline unit tests
+        run: python -m unittest discover -s tests -v
 
-      - name: Run reddit_manager test
+  optional-network-search:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_network == true }}
+    needs: offline-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Run bounded network search
         env:
-          SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
-          TEST_KEYWORD: ${{ github.event.inputs.keyword }}
-        run: |
-          echo "Running reddit_manager test..."
-          echo "Keyword: $TEST_KEYWORD"
-          python test_runner.py
-
-      - name: Upload Evidence Artifact
+          REDDIT_REQUEST_DELAY: "2"
+          TEST_KEYWORD: ${{ inputs.keyword }}
+        run: python test_runner.py --query "$TEST_KEYWORD" --pages 1 --posts-per-page 5 --comments-limit 25 --output-dir artifacts
+      - name: Upload evidence artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: reddit-evidence-files
-          path: |
-            reddit_evidence.txt
-            reddit_media.json
+          name: reddit-evidence-${{ github.run_id }}
+          path: artifacts/

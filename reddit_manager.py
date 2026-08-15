@@ -1,0 +1,399 @@
+"""Reddit evidence collector.
+
+The module collects public Reddit JSON data for research workflows. It does not
+claim that Reddit content is independently true; every bundle carries source
+metadata and an evidence limitation.
+"""
+
+from __future__ import annotations
+
+import html
+import json
+import os
+import re
+import time
+from dataclasses import dataclass, asdict
+from datetime import datetime, timezone
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from urllib.parse import quote_plus
+
+import requests
+from requests.adapters import HTTPAdapter
+
+
+DEFAULT_BASE_URL = "https://www.reddit.com"
+DEFAULT_USER_AGENT = "YusufRedditResearch/1.0 (research evidence collector; contact owner before reuse)"
+DEFAULT_TIMEOUT = 30.0
+DEFAULT_PAGES = 2
+DEFAULT_POSTS_PER_PAGE = 10
+DEFAULT_COMMENTS_LIMIT = 100
+DEFAULT_RETRIES = 3
+DEFAULT_DELAY = 1.0
+
+
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _clean_text(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    return html.unescape(value).strip()
+
+
+def _safe_permalink(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    if not value.startswith("/") or ".." in value or "?" in value:
+        return ""
+    return value
+
+
+def _dedupe(values: Iterable[str]) -> List[str]:
+    seen = set()
+    result: List[str] = []
+    for value in values:
+        if value and value not in seen:
+            seen.add(value)
+            result.append(value)
+    return result
+
+
+def _media_urls(data: Dict[str, Any]) -> List[str]:
+    urls: List[str] = []
+    candidate = data.get("url")
+    if isinstance(candidate, str) and candidate.startswith(("http://", "https://")):
+        lowered = candidate.lower()
+        if any(marker in lowered for marker in (".jpg", ".jpeg", ".png", ".gif", ".webp", "i.redd.it", "imgur.com", "v.redd.it", "gallery")):
+            urls.append(candidate)
+
+    text = _clean_text(data.get("selftext") or data.get("body"))
+    urls.extend(re.findall(r"https?://[^\s)\]>]+", text))
+
+    metadata = data.get("media_metadata")
+    if isinstance(metadata, dict):
+        for item in metadata.values():
+            if not isinstance(item, dict):
+                continue
+            size = item.get("s") or {}
+            url = size.get("u") or size.get("url")
+            if isinstance(url, str):
+                urls.append(html.unescape(url))
+    return _dedupe(urls)
+
+
+@dataclass
+class CollectorConfig:
+    base_url: str = DEFAULT_BASE_URL
+    timeout: float = DEFAULT_TIMEOUT
+    retries: int = DEFAULT_RETRIES
+    delay: float = DEFAULT_DELAY
+    user_agent: str = DEFAULT_USER_AGENT
+    verify_tls: bool = True
+    access_token: str = ""
+    scraper_api_key: str = ""
+    scraper_api_base: str = "https://api.scraperapi.com"
+
+    def __post_init__(self) -> None:
+        if self.access_token and self.base_url == DEFAULT_BASE_URL:
+            self.base_url = "https://oauth.reddit.com"
+        self.base_url = self.base_url.rstrip("/")
+        self.scraper_api_base = self.scraper_api_base.rstrip("/")
+
+    @classmethod
+    def from_env(cls) -> "CollectorConfig":
+        access_token = os.getenv("REDDIT_ACCESS_TOKEN", "").strip()
+        configured_base = os.getenv("REDDIT_BASE_URL", "").strip()
+        base_url = configured_base or ("https://oauth.reddit.com" if access_token else DEFAULT_BASE_URL)
+        return cls(
+            base_url=base_url.rstrip("/"),
+            timeout=float(os.getenv("REDDIT_TIMEOUT", str(DEFAULT_TIMEOUT))),
+            retries=max(0, int(os.getenv("REDDIT_RETRIES", str(DEFAULT_RETRIES)))),
+            delay=max(0.0, float(os.getenv("REDDIT_REQUEST_DELAY", str(DEFAULT_DELAY)))),
+            user_agent=os.getenv("REDDIT_USER_AGENT", DEFAULT_USER_AGENT),
+            verify_tls=os.getenv("REDDIT_VERIFY_TLS", "true").lower() not in {"0", "false", "no"},
+            access_token=access_token,
+            scraper_api_key=os.getenv("SCRAPER_API_KEY", "").strip(),
+            scraper_api_base=os.getenv("SCRAPER_API_BASE", "https://api.scraperapi.com").rstrip("/"),
+        )
+
+
+class RedditFetchError(RuntimeError):
+    """Raised when Reddit data cannot be fetched after the configured retries."""
+
+
+class RedditManager:
+    """Fetch and normalize public Reddit JSON without treating it as truth."""
+
+    def __init__(self, session: Optional[requests.Session] = None, config: Optional[CollectorConfig] = None):
+        self.config = config or CollectorConfig.from_env()
+        self.session = session or requests.Session()
+        self.session.headers.update({
+            "User-Agent": self.config.user_agent,
+            "Accept": "application/json",
+        })
+        if self.config.access_token:
+            self.session.headers.update({"Authorization": f"Bearer {self.config.access_token}"})
+        self.last_warnings: List[str] = []
+        self.last_transport: str = "none"
+
+    def _request_json(self, path: str, params: Optional[Dict[str, Any]] = None) -> Any:
+        url = path if path.startswith("http") else f"{self.config.base_url}/{path.lstrip('/')}"
+        request_params = dict(params or {})
+        transports: List[Tuple[str, str, Dict[str, Any]]] = []
+
+        # OAuth requests must go directly to oauth.reddit.com. A proxy should
+        # never receive an OAuth access token or be used to bypass OAuth policy.
+        if self.config.scraper_api_key and not self.config.access_token:
+            prepared = requests.Request("GET", url, params=request_params).prepare().url
+            transports.append((
+                "scraperapi",
+                self.config.scraper_api_base,
+                {
+                    "api_key": self.config.scraper_api_key,
+                    "url": prepared,
+                    "render": "false",
+                },
+            ))
+        transports.append(("direct", url, request_params))
+        errors: List[str] = []
+
+        for transport_name, request_url, transport_params in transports:
+            last_error: Optional[Exception] = None
+            for attempt in range(self.config.retries + 1):
+                try:
+                    response = self.session.get(
+                        request_url,
+                        params=transport_params,
+                        timeout=self.config.timeout,
+                        verify=self.config.verify_tls,
+                    )
+                    status = int(getattr(response, "status_code", 0))
+                    if status == 429 or status >= 500:
+                        raise RedditFetchError(f"retryable HTTP status {status}")
+                    if status >= 400:
+                        raise RedditFetchError(f"HTTP status {status}")
+                    payload = response.json()
+                    self.last_transport = transport_name
+                    if self.config.delay and attempt == 0:
+                        time.sleep(self.config.delay)
+                    return payload
+                except (requests.RequestException, ValueError, RedditFetchError) as exc:
+                    last_error = exc
+                    if attempt >= self.config.retries:
+                        break
+                    time.sleep(min(30.0, self.config.delay * (2 ** attempt)))
+            errors.append(f"{transport_name}: {last_error}")
+
+        raise RedditFetchError(f"Could not fetch {url}; {' | '.join(errors)}")
+
+    def _parse_comment_children(self, children: Sequence[Dict[str, Any]], permalink: str, depth: int = 0) -> List[Dict[str, Any]]:
+        comments: List[Dict[str, Any]] = []
+        for child in children:
+            if not isinstance(child, dict) or child.get("kind") != "t1":
+                continue
+            data = child.get("data") or {}
+            body = _clean_text(data.get("body"))
+            if not body or body in {"[deleted]", "[removed]"}:
+                continue
+            comment_id = _clean_text(data.get("id"))
+            nested = []
+            replies = data.get("replies")
+            if isinstance(replies, dict):
+                nested = self._parse_comment_children(
+                    (replies.get("data") or {}).get("children", []), permalink, depth + 1
+                )
+            comments.append({
+                "evidence_type": "user_report",
+                "comment_id": comment_id,
+                "author": data.get("author"),
+                "body": body,
+                "score": int(data.get("score") or 0),
+                "depth": depth,
+                "url": f"{self.config.base_url}{permalink}{comment_id}" if comment_id else f"{self.config.base_url}{permalink}",
+                "media": _media_urls(data),
+                "replies": nested,
+            })
+        return comments
+
+    def _parse_post(self, post_data: Dict[str, Any], comments_data: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+        permalink = _safe_permalink(post_data.get("permalink"))
+        comments = self._parse_comment_children(comments_data, permalink)
+        return {
+            "evidence_type": "community_signal",
+            "post_id": post_data.get("id"),
+            "subreddit": post_data.get("subreddit"),
+            "title": _clean_text(post_data.get("title")),
+            "text": _clean_text(post_data.get("selftext")),
+            "author": post_data.get("author"),
+            "score": int(post_data.get("score") or 0),
+            "num_comments": int(post_data.get("num_comments") or 0),
+            "created_utc": post_data.get("created_utc"),
+            "url": f"{self.config.base_url}{permalink}" if permalink else post_data.get("url"),
+            "permalink": permalink,
+            "media": _media_urls(post_data),
+            "comments": comments,
+            "verification_status": "unverified_user_generated_content",
+        }
+
+    def fetch_post(self, permalink: str, comments_limit: int = DEFAULT_COMMENTS_LIMIT) -> Dict[str, Any]:
+        safe = _safe_permalink(permalink)
+        if not safe:
+            raise ValueError("permalink must be a Reddit path beginning with '/'")
+        payload = self._request_json(f"{safe}.json", {"limit": comments_limit, "raw_json": 1})
+        if not isinstance(payload, list) or len(payload) < 2:
+            raise RedditFetchError(f"Unexpected post response for {safe}")
+        post_children = ((payload[0].get("data") or {}).get("children") or [])
+        if not post_children:
+            raise RedditFetchError(f"Post not found for {safe}")
+        post_data = post_children[0].get("data") or {}
+        comments = ((payload[1].get("data") or {}).get("children") or [])
+        return self._parse_post(post_data, comments)
+
+    def search(
+        self,
+        query: str,
+        pages: int = DEFAULT_PAGES,
+        posts_per_page: int = DEFAULT_POSTS_PER_PAGE,
+        comments_limit: int = DEFAULT_COMMENTS_LIMIT,
+        sort: str = "relevance",
+        time_window: str = "all",
+    ) -> Dict[str, Any]:
+        query = _clean_text(query)
+        if not query:
+            raise ValueError("query must not be empty")
+        pages = max(1, min(int(pages), 20))
+        posts_per_page = max(1, min(int(posts_per_page), 100))
+        comments_limit = max(0, min(int(comments_limit), 500))
+        posts: List[Dict[str, Any]] = []
+        after: Optional[str] = None
+        warnings: List[str] = []
+
+        for _ in range(pages):
+            params: Dict[str, Any] = {
+                "q": query,
+                "limit": posts_per_page,
+                "sort": sort,
+                "t": time_window,
+                "raw_json": 1,
+            }
+            if after:
+                params["after"] = after
+            try:
+                payload = self._request_json("/search.json", params)
+            except RedditFetchError as exc:
+                warnings.append(str(exc))
+                break
+            listing = (payload or {}).get("data") or {}
+            children = listing.get("children") or []
+            after = listing.get("after")
+            for child in children:
+                data = child.get("data") or {}
+                permalink = _safe_permalink(data.get("permalink"))
+                if not permalink:
+                    continue
+                try:
+                    posts.append(self.fetch_post(permalink, comments_limit=comments_limit))
+                except RedditFetchError as exc:
+                    warnings.append(f"Could not fetch {permalink}: {exc}")
+            if not after:
+                break
+
+        unique: Dict[str, Dict[str, Any]] = {}
+        for post in posts:
+            key = post.get("post_id") or post.get("url")
+            if key:
+                unique[str(key)] = post
+        result = {
+            "schema_version": "1.0",
+            "query": query,
+            "retrieved_at": utc_now_iso(),
+            "source": "Reddit public JSON endpoints",
+            "transport": self.last_transport,
+            "evidence_policy": "Reddit posts and comments are user-generated signals and remain unverified until independently checked.",
+            "parameters": {
+                "pages": pages,
+                "posts_per_page": posts_per_page,
+                "comments_limit": comments_limit,
+                "sort": sort,
+                "time_window": time_window,
+            },
+            "posts": list(unique.values()),
+            "warnings": warnings,
+        }
+        return result
+
+
+def _flatten_comments(comments: Sequence[Dict[str, Any]]) -> Iterable[Dict[str, Any]]:
+    for comment in comments:
+        yield comment
+        yield from _flatten_comments(comment.get("replies") or [])
+
+
+def generate_writer_brief(bundle: Dict[str, Any]) -> str:
+    """Create a cautious Markdown brief that preserves provenance and uncertainty."""
+    if not bundle or not bundle.get("posts"):
+        return ""
+    lines = [
+        "--- REDDIT EVIDENCE FILE ---",
+        f"Query: {bundle.get('query', '')}",
+        f"Retrieved: {bundle.get('retrieved_at', '')}",
+        "Evidence status: UNVERIFIED USER-GENERATED SIGNALS",
+        "Use: Research leads only. Independently verify factual claims before publication.",
+        "",
+    ]
+    for index, post in enumerate(bundle.get("posts", []), 1):
+        lines.extend([
+            f"## THREAD {index}: {post.get('title', 'Untitled')}",
+            f"Subreddit: r/{post.get('subreddit', '')}",
+            f"URL: {post.get('url', '')}",
+            f"Score: {post.get('score', 0)} | Comments: {post.get('num_comments', 0)}",
+            f"Post evidence type: {post.get('evidence_type', 'community_signal')}",
+        ])
+        text = post.get("text") or ""
+        if text:
+            lines.append(f"Post text: {text[:2000]}")
+        comments = sorted(
+            list(_flatten_comments(post.get("comments") or [])),
+            key=lambda item: item.get("score", 0),
+            reverse=True,
+        )[:10]
+        if comments:
+            lines.append("Top community responses:")
+            for comment in comments:
+                body = (comment.get("body") or "").replace("\n", " ")[:800]
+                lines.append(f"- u/{comment.get('author', 'unknown')} (score {comment.get('score', 0)}): {body}")
+                lines.append(f"  Source: {comment.get('url', '')}")
+        lines.append("")
+    if bundle.get("warnings"):
+        lines.append("## Collection warnings")
+        lines.extend(f"- {warning}" for warning in bundle["warnings"])
+    return "\n".join(lines).strip() + "\n"
+
+
+def get_community_intel(long_keyword: str) -> Tuple[str, List[Dict[str, Any]]]:
+    """Backward-compatible adapter returning (brief, media_assets)."""
+    bundle = RedditManager().search(long_keyword)
+    brief = generate_writer_brief(bundle)
+    media_assets: List[Dict[str, Any]] = []
+    for post in bundle.get("posts", []):
+        for media_url in post.get("media", []):
+            media_assets.append({
+                "type": "media",
+                "url": media_url,
+                "source": post.get("url"),
+                "evidence_status": "unverified_user_generated_content",
+            })
+        for comment in _flatten_comments(post.get("comments") or []):
+            for media_url in comment.get("media", []):
+                media_assets.append({
+                    "type": "media",
+                    "url": media_url,
+                    "source": comment.get("url"),
+                    "evidence_status": "unverified_user_generated_content",
+                })
+    return brief, media_assets
+
+
+def bundle_to_json(bundle: Dict[str, Any]) -> str:
+    return json.dumps(bundle, ensure_ascii=False, indent=2)
