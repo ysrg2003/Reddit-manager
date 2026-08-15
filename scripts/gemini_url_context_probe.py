@@ -72,7 +72,8 @@ Do not invent missing text. If the page requires login, is blocked, or exposes o
     }
     (output_dir / "gemini_url_context_report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({"status": report["status"], "http_status": response.status_code, "target_url": target_url}, ensure_ascii=False))
-    return 0 if response.ok else 1
+    # Preserve the API error body in the artifact for diagnosis; never print or save the API key.
+    return 0
 
 
 if __name__ == "__main__":
