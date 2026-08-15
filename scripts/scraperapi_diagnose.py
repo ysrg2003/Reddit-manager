@@ -56,6 +56,7 @@ def target_urls() -> list[tuple[str, str]]:
         ("reddit-post-html", post_url),
         ("reddit-post-json", post_url.rstrip("/") + "/.json?raw_json=1&limit=100"),
         ("reddit-post-json-premium", post_url.rstrip("/") + "/.json?raw_json=1&limit=100"),
+        ("reddit-old-post-json", post_url.replace("https://www.reddit.com", "https://old.reddit.com").rstrip("/") + "/.json?raw_json=1&limit=100"),
         ("reddit-post-autoparse", post_url),
     ]
 
