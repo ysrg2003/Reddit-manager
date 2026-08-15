@@ -156,7 +156,7 @@ def main() -> int:
                 "body_length": len(response.content),
                 "content_type": response.headers.get("content-type", ""),
             }
-            if label in {"reddit-html", "reddit-html-render"} and response.status_code == 200:
+            if label in {"reddit-html", "reddit-html-render", "reddit-post-html"} and response.status_code == 200:
                 result["html_structure"] = summarize_html(response.text)
             results.append(result)
             print(f"{label}: status={response.status_code} elapsed={elapsed}s bytes={len(response.content)}", flush=True)
