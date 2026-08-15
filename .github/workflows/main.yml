@@ -78,7 +78,9 @@ jobs:
         env:
           REDDIT_PROVIDER: scraperapi
           REDDIT_DIRECT_ENABLED: "false"
-          REDDIT_REQUEST_DELAY: "1.5"
+          REDDIT_REQUEST_DELAY: "0.5"
+          REDDIT_TIMEOUT: "15"
+          REDDIT_RETRIES: "0"
           SCRAPER_API_KEYS_JSON: ${{ secrets.SCRAPER_API_KEYS_JSON }}
         run: python scripts/corpus_scraperapi_probe.py --queries testdata/corpus_queries.json --output-dir artifacts/corpus --pages 1 --posts-per-page 1 --comments-limit 0
       - name: Upload safe corpus report
