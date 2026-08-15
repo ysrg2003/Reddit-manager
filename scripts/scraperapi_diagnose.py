@@ -47,11 +47,13 @@ def parse_first_key() -> tuple[str, str]:
 def target_urls() -> list[tuple[str, str]]:
     query = urlencode({"q": "vibe coding trap why building assisted", "limit": 1, "sort": "relevance", "t": "all", "raw_json": 1})
     html_query = urlencode({"q": "vibe coding trap why building assisted", "sort": "relevance"})
+    post_url = "https://www.reddit.com/r/AI_Agents/comments/1vkb9yy/the_biggest_trap_ive_hit_doing_vibe_coding_as/"
     return [
         ("provider-health", "https://example.com"),
         ("reddit-json", f"https://www.reddit.com/search.json?{query}"),
         ("reddit-html", f"https://www.reddit.com/search/?{html_query}"),
         ("reddit-html-render", f"https://www.reddit.com/search/?{html_query}"),
+        ("reddit-post-html", post_url),
     ]
 
 
