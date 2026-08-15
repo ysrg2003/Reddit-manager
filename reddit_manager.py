@@ -97,10 +97,17 @@ class _RedditSearchHTMLParser(HTMLParser):
         self.current: Optional[Dict[str, Any]] = None
         self.title_buffer: List[str] = []
         self.capture_title = False
+        self.current_anchor: Optional[Dict[str, str]] = None
+        self.anchor_posts: List[Dict[str, Any]] = []
 
     def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
         values = {key: value or "" for key, value in attrs}
         lowered = tag.lower()
+        if lowered == "a":
+            href = values.get("href", "")
+            if re.match(r"^/r/[^/]+/comments/[^/]+/", href):
+                self._finish_anchor()
+                self.current_anchor = {"permalink": _safe_permalink(href), "title": ""}
         if lowered == "shreddit-post":
             self._finish_current()
             self.current = values
@@ -115,10 +122,14 @@ class _RedditSearchHTMLParser(HTMLParser):
             self.capture_title = True
 
     def handle_data(self, data: str) -> None:
+        if self.current_anchor is not None:
+            self.current_anchor["title"] += " " + data
         if self.current is not None and self.capture_title:
             self.title_buffer.append(data)
 
     def handle_endtag(self, tag: str) -> None:
+        if tag.lower() == "a":
+            self._finish_anchor()
         if self.current is not None and self.capture_title and tag.lower() in {"a", "span", "h1", "h2", "h3"}:
             self.capture_title = False
         if tag.lower() == "shreddit-post":
@@ -126,7 +137,28 @@ class _RedditSearchHTMLParser(HTMLParser):
 
     def close(self) -> None:
         super().close()
+        self._finish_anchor()
         self._finish_current()
+
+    def _finish_anchor(self) -> None:
+        if not self.current_anchor:
+            return
+        permalink = self.current_anchor.get("permalink", "")
+        title = _clean_text(self.current_anchor.get("title", ""))
+        match = re.match(r"^/r/([^/]+)/comments/([^/]+)/", permalink)
+        if permalink and title and match:
+            self.anchor_posts.append({
+                "post_id": match.group(2),
+                "subreddit": match.group(1),
+                "title": title,
+                "text": "",
+                "author": "",
+                "score": None,
+                "num_comments": None,
+                "url": urljoin("https://www.reddit.com", permalink),
+                "permalink": permalink,
+            })
+        self.current_anchor = None
 
     def _finish_current(self) -> None:
         if not self.current:
@@ -159,8 +191,14 @@ def _parse_reddit_search_html(content: str, query: str, posts_per_page: int) -> 
     parser = _RedditSearchHTMLParser()
     parser.feed(content or "")
     parser.close()
+    source_posts = parser.posts or parser.anchor_posts
+    unique_posts: Dict[str, Dict[str, Any]] = {}
+    for item in source_posts:
+        permalink = item.get("permalink") or item.get("url") or ""
+        if permalink and permalink not in unique_posts:
+            unique_posts[permalink] = item
     posts = []
-    for item in parser.posts[: max(1, min(int(posts_per_page), 100))]:
+    for item in list(unique_posts.values())[: max(1, min(int(posts_per_page), 100))]:
         posts.append({
             "evidence_type": "community_signal_listing",
             "post_id": item.get("post_id"),
