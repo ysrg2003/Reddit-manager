@@ -156,8 +156,7 @@ def main() -> int:
     articles = payload.get("articles") or []
     if not 1 <= args.article_number <= len(articles):
         raise SystemExit(f"article number must be between 1 and {len(articles)}")
-    article = dict(articles[args.article_number - 1])
-    article["article_number"] = args.article_number
+    article = articles[args.article_number - 1]
     target_url = build_reddit_search_url(article["query"])
     keys = secret_entries()
     session = requests.Session()
