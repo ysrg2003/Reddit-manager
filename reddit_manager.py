@@ -223,7 +223,7 @@ def _parse_reddit_search_html(content: str, query: str, posts_per_page: int) -> 
         "evidence_policy": "Search listings are user-generated signals and remain unverified until the source page and important claims are independently checked.",
         "parameters": {"posts_per_page": posts_per_page, "sort": "relevance", "time_window": "all"},
         "posts": posts,
-        "warnings": [] if posts else ["ScraperAPI returned Reddit HTML but no recognizable post cards were found."],
+        "warnings": ([] if posts or len(content or "") >= 10000 else ["ScraperAPI returned an unusually small Reddit HTML shell with no recognizable post links."]),
     }
 
 
