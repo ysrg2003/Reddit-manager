@@ -30,6 +30,11 @@ on:
         required: false
         type: boolean
         default: false
+      run_scrapy_sample:
+        description: "Run one bounded ScraperAPI HTML sample parsed with Scrapy"
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   offline-tests:
@@ -65,6 +70,35 @@ jobs:
         with:
           name: direct-old-reddit-${{ github.run_id }}
           path: artifacts/direct-old-reddit/
+          if-no-files-found: error
+
+  scrapy-html-sample:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_scrapy_sample == true }}
+    needs: offline-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Run one bounded Scrapy HTML sample
+        env:
+          REDDIT_PROVIDER: scraperapi
+          REDDIT_DIRECT_ENABLED: "false"
+          REDDIT_REQUEST_DELAY: "0.5"
+          REDDIT_TIMEOUT: "70"
+          REDDIT_RETRIES: "0"
+          SCRAPER_API_KEYS_JSON: ${{ secrets.SCRAPER_API_KEYS_JSON }}
+        run: python test_runner.py --query "vibe coding trap why building assisted" --provider scraperapi --pages 1 --posts-per-page 5 --comments-limit 20 --output-dir artifacts/scrapy-sample
+      - name: Upload Scrapy evidence sample
+        uses: actions/upload-artifact@v4
+        with:
+          name: scrapy-html-sample-${{ github.run_id }}
+          path: artifacts/scrapy-sample/
           if-no-files-found: error
 
   optional-network-search:

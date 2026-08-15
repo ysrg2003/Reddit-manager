@@ -138,9 +138,36 @@ class RedditManagerTests(unittest.TestCase):
         self.assertEqual(bundle["transport"], "scraperapi")
         self.assertEqual(len(bundle["posts"]), 1)
         self.assertEqual(bundle["posts"][0]["title"], "Example title")
-        self.assertEqual(bundle["posts"][0]["url"], "https://www.reddit.com/r/test/comments/abc/example/")
+        self.assertEqual(bundle["posts"][0]["url"], "https://old.reddit.com/r/test/comments/abc/example/")
         self.assertEqual(session.get.call_args.args[0], "https://api.scraperapi.com")
-        self.assertEqual(session.get.call_args.kwargs["params"]["url"].split("?")[0], "https://www.reddit.com/search/")
+        self.assertEqual(session.get.call_args.kwargs["params"]["url"].split("?")[0], "https://old.reddit.com/search.json")
+
+    def test_scraperapi_scrapy_fetches_post_html_and_comments(self):
+        search_html = '''
+        <div class="thing link" data-permalink="/r/test/comments/abc/example/" data-subreddit="test">
+          <a class="title" href="/r/test/comments/abc/example/">Example title</a>
+        </div>
+        '''
+        post_html = '''
+        <div class="thing link" data-permalink="/r/test/comments/abc/example/" data-subreddit="test">
+          <a class="title">Example title</a>
+          <div class="usertext-body"><div class="md"><p>Post body from HTML.</p></div></div>
+        </div>
+        <div class="comment" data-fullname="t1_c1"><a class="author">reader</a><div class="md"><p>Comment from HTML.</p></div></div>
+        '''
+        manager, session = self.make_manager(
+            [TextResponse(search_html), TextResponse(post_html)],
+            direct_enabled=False,
+            scraper_api_keys=[("scraper-1", "placeholder-1")],
+        )
+        bundle = manager.search("example", pages=1, posts_per_page=1, comments_limit=10)
+        self.assertEqual(len(bundle["posts"]), 1)
+        self.assertEqual(bundle["posts"][0]["content_status"], "post_html_parsed")
+        self.assertEqual(bundle["posts"][0]["text"], "Post body from HTML.")
+        self.assertEqual(bundle["posts"][0]["comments"][0]["body"], "Comment from HTML.")
+        self.assertEqual(session.get.call_count, 2)
+        self.assertEqual(session.get.call_args_list[0].kwargs["params"]["url"].split("?")[0], "https://old.reddit.com/search.json")
+        self.assertEqual(session.get.call_args_list[1].kwargs["params"]["url"], "https://old.reddit.com/r/test/comments/abc/example/")
 
     def test_scraper_quota_does_not_rotate_keys(self):
         manager, session = self.make_manager(

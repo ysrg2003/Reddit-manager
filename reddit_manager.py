@@ -21,6 +21,8 @@ from urllib.parse import quote_plus, urljoin
 import requests
 from requests.adapters import HTTPAdapter
 
+from scrapy_reddit_html import parse_post_html, parse_search_html
+
 
 DEFAULT_BASE_URL = "https://www.reddit.com"
 DEFAULT_USER_AGENT = "YusufRedditResearch/1.0 (research evidence collector; contact owner before reuse)"
@@ -188,17 +190,9 @@ class _RedditSearchHTMLParser(HTMLParser):
 
 
 def _parse_reddit_search_html(content: str, query: str, posts_per_page: int) -> Dict[str, Any]:
-    parser = _RedditSearchHTMLParser()
-    parser.feed(content or "")
-    parser.close()
-    source_posts = parser.posts or parser.anchor_posts
-    unique_posts: Dict[str, Dict[str, Any]] = {}
-    for item in source_posts:
-        permalink = item.get("permalink") or item.get("url") or ""
-        if permalink and permalink not in unique_posts:
-            unique_posts[permalink] = item
+    parsed = parse_search_html(content, query, posts_per_page)
     posts = []
-    for item in list(unique_posts.values())[: max(1, min(int(posts_per_page), 100))]:
+    for item in parsed.get("posts", []):
         posts.append({
             "evidence_type": "community_signal_listing",
             "post_id": item.get("post_id"),
@@ -215,15 +209,15 @@ def _parse_reddit_search_html(content: str, query: str, posts_per_page: int) -> 
             "verification_status": "unverified_user_generated_content",
         })
     return {
-        "schema_version": "1.1",
+        "schema_version": "1.2",
         "query": query,
         "retrieved_at": utc_now_iso(),
-        "source": "Reddit search HTML via ScraperAPI",
+        "source": "Reddit search HTML via ScraperAPI parsed with Scrapy",
         "transport": "scraperapi",
         "evidence_policy": "Search listings are user-generated signals and remain unverified until the source page and important claims are independently checked.",
         "parameters": {"posts_per_page": posts_per_page, "sort": "relevance", "time_window": "all"},
         "posts": posts,
-        "warnings": ([] if posts or len(content or "") >= 10000 else ["ScraperAPI returned an unusually small Reddit HTML shell with no recognizable post links."]),
+        "warnings": parsed.get("warnings", []),
     }
 
 
@@ -408,9 +402,78 @@ class RedditManager:
         sort: str = "relevance",
         time_window: str = "all",
     ) -> Dict[str, Any]:
-        params = {"q": query, "sort": sort, "t": time_window}
-        content = self._request_scraperapi_text("/search/", params)
+        params = {"q": query, "limit": max(1, min(int(posts_per_page), 100)), "sort": sort, "t": time_window, "raw_json": 1}
+        content = self._request_scraperapi_text("https://old.reddit.com/search.json", params)
         return _parse_reddit_search_html(content, query, posts_per_page)
+
+    def _search_via_scraperapi_scrapy(
+        self,
+        query: str,
+        pages: int = DEFAULT_PAGES,
+        posts_per_page: int = DEFAULT_POSTS_PER_PAGE,
+        comments_limit: int = DEFAULT_COMMENTS_LIMIT,
+        sort: str = "relevance",
+        time_window: str = "all",
+    ) -> Dict[str, Any]:
+        listing = self._search_via_scraperapi_html(
+            query,
+            posts_per_page=posts_per_page,
+            sort=sort,
+            time_window=time_window,
+        )
+        warnings = list(listing.get("warnings", []))
+        posts: List[Dict[str, Any]] = []
+        for listing_post in listing.get("posts", [])[: max(1, min(int(posts_per_page), 100))]:
+            permalink = _safe_permalink(listing_post.get("permalink"))
+            if not permalink:
+                continue
+            try:
+                post_html = self._request_scraperapi_text(f"https://old.reddit.com{permalink}", {})
+                detail = parse_post_html(post_html, permalink, comments_limit=comments_limit)
+                detail_post = detail.get("post") or {}
+                if not detail_post.get("title"):
+                    detail_post.update({
+                        "post_id": listing_post.get("post_id"),
+                        "subreddit": listing_post.get("subreddit"),
+                        "title": listing_post.get("title"),
+                        "url": listing_post.get("url"),
+                        "permalink": permalink,
+                    })
+                    detail_post["content_status"] = "listing_only"
+                else:
+                    detail_post["content_status"] = "post_html_parsed"
+                detail_post["evidence_type"] = "community_signal"
+                detail_post["verification_status"] = "unverified_user_generated_content"
+                detail_post["media"] = detail_post.get("media") or []
+                detail_post["comments"] = detail.get("comments", [])
+                posts.append(detail_post)
+                warnings.extend(detail.get("warnings", []))
+            except RedditFetchError as exc:
+                warnings.append(f"Could not fetch post HTML for {permalink}: {exc}")
+                listing_post = dict(listing_post)
+                listing_post["content_status"] = "listing_only"
+                listing_post["evidence_type"] = "community_signal_listing"
+                posts.append(listing_post)
+        return {
+            "schema_version": "1.3",
+            "query": query,
+            "retrieved_at": utc_now_iso(),
+            "source": "Reddit old search/post HTML via ScraperAPI parsed with Scrapy",
+            "transport": "scraperapi",
+            "evidence_policy": "Reddit HTML contains user-generated signals. Post text and comments are retained as unverified research leads and must be independently checked before publication.",
+            "parameters": {
+                "pages": pages,
+                "posts_per_page": posts_per_page,
+                "comments_limit": comments_limit,
+                "sort": sort,
+                "time_window": time_window,
+                "search_endpoint": "old.reddit.com/search.json",
+                "detail_endpoint": "old.reddit.com/{permalink}",
+                "parser": "scrapy-selector",
+            },
+            "posts": posts,
+            "warnings": _dedupe(warnings),
+        }
 
     def _request_json(self, path: str, params: Optional[Dict[str, Any]] = None) -> Any:
         url = path if path.startswith("http") else f"{self.config.base_url}/{path.lstrip('/')}"
@@ -598,7 +661,7 @@ class RedditManager:
         warnings: List[str] = []
         if self.config.scraper_api_keys and not self.config.access_token:
             try:
-                return self._search_via_scraperapi_html(query, posts_per_page=posts_per_page, sort=sort, time_window=time_window)
+                return self._search_via_scraperapi_scrapy(query, pages=pages, posts_per_page=posts_per_page, comments_limit=comments_limit, sort=sort, time_window=time_window)
             except RedditFetchError as exc:
                 warnings.append(str(exc))
                 return {
