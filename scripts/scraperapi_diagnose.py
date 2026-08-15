@@ -4,7 +4,10 @@ import argparse
 import json
 import os
 import time
+from collections import Counter
+from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import urlparse
 from urllib.parse import urlencode
 
 import requests
@@ -51,6 +54,48 @@ def target_urls() -> list[tuple[str, str]]:
     ]
 
 
+class _HTMLStructureParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.tags = Counter()
+        self.samples = []
+        self.capture_depth = 0
+        self.text_parts = []
+
+    def handle_starttag(self, tag, attrs):
+        self.tags[tag.lower()] += 1
+        if len(self.samples) < 80:
+            keys = sorted({name for name, _ in attrs})
+            href = next((value for name, value in attrs if name == "href" and value), "")
+            if href:
+                parsed = urlparse(href)
+                href = parsed.path[:200]
+            self.samples.append({"tag": tag.lower(), "attribute_names": keys, "path": href})
+        if tag.lower() in {"script", "style"}:
+            self.capture_depth += 1
+
+    def handle_endtag(self, tag):
+        if tag.lower() in {"script", "style"} and self.capture_depth:
+            self.capture_depth -= 1
+
+    def handle_data(self, data):
+        if not self.capture_depth:
+            text = " ".join(data.split())
+            if text and len(self.text_parts) < 20:
+                self.text_parts.append(text[:120])
+
+
+def summarize_html(content: str) -> dict:
+    parser = _HTMLStructureParser()
+    parser.feed(content or "")
+    parser.close()
+    return {
+        "tag_counts": dict(parser.tags.most_common(30)),
+        "sample_elements": parser.samples,
+        "text_samples": parser.text_parts,
+    }
+
+
 def classify(status: int, body_length: int) -> str:
     if status in {200, 404}:
         return "provider_response"
@@ -81,14 +126,17 @@ def main() -> int:
                 verify=True,
             )
             elapsed = round(time.monotonic() - started, 3)
-            results.append({
+            result = {
                 "target": label,
                 "status_code": response.status_code,
                 "classification": classify(response.status_code, len(response.content)),
                 "elapsed_seconds": elapsed,
                 "body_length": len(response.content),
                 "content_type": response.headers.get("content-type", ""),
-            })
+            }
+            if label == "reddit-html" and response.status_code == 200:
+                result["html_structure"] = summarize_html(response.text)
+            results.append(result)
             print(f"{label}: status={response.status_code} elapsed={elapsed}s bytes={len(response.content)}", flush=True)
             if response.status_code == 429:
                 break
