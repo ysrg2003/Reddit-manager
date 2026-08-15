@@ -1,6 +1,8 @@
-"""CLI smoke runner for a deliberate Reddit search.
+"""CLI runner for deliberate Reddit-related research.
 
-Network access is explicit: this script is for manual runs, not unit tests.
+The default provider is ``auto``: direct Reddit is disabled by default, then
+an explicitly configured free-credit Brave Search API is used as a discovery
+fallback. Network access remains explicit and bounded.
 """
 
 from __future__ import annotations
@@ -15,7 +17,8 @@ from reddit_manager import RedditManager, generate_writer_brief
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Collect Reddit research evidence")
-    parser.add_argument("--query", default=os.getenv("TEST_KEYWORD"), help="Reddit search query")
+    parser.add_argument("--query", default=os.getenv("TEST_KEYWORD"), help="Research query")
+    parser.add_argument("--provider", default=os.getenv("REDDIT_PROVIDER", "auto"), choices=["auto", "reddit", "brave"], help="Evidence transport")
     parser.add_argument("--output-dir", default="artifacts", help="Directory for evidence artifacts")
     parser.add_argument("--pages", type=int, default=2)
     parser.add_argument("--posts-per-page", type=int, default=10)
@@ -30,8 +33,10 @@ def main() -> int:
     if not args.query or not args.query.strip():
         raise SystemExit("Provide --query or TEST_KEYWORD before a network run.")
 
-    bundle = RedditManager().search(
+    manager = RedditManager()
+    bundle = manager.search_with_fallback(
         args.query,
+        provider=args.provider,
         pages=args.pages,
         posts_per_page=args.posts_per_page,
         comments_limit=args.comments_limit,
@@ -51,7 +56,9 @@ def main() -> int:
             media.append({"url": url, "source": post.get("url"), "evidence_status": "unverified_user_generated_content"})
     (output / "reddit_media.json").write_text(json.dumps(media, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    print(f"Collected {len(bundle.get('posts', []))} threads for: {args.query}")
+    print(f"Provider: {args.provider}")
+    print(f"Transport: {bundle.get('transport', 'unknown')}")
+    print(f"Collected {len(bundle.get('posts', []))} Reddit-related evidence items for: {args.query}")
     print(f"Artifacts: {output / 'reddit_evidence.json'}, {output / 'reddit_evidence.md'}")
     if bundle.get("warnings"):
         print(f"Warnings: {len(bundle['warnings'])}")

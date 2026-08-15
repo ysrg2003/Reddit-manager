@@ -91,20 +91,29 @@ class CollectorConfig:
     user_agent: str = DEFAULT_USER_AGENT
     verify_tls: bool = True
     access_token: str = ""
+    client_id: str = ""
+    client_secret: str = ""
+    oauth_scope: str = "read"
     scraper_api_key: str = ""
     scraper_api_base: str = "https://api.scraperapi.com"
+    brave_api_key: str = ""
+    brave_api_base: str = "https://api.search.brave.com/res/v1/web/search"
+    direct_enabled: bool = False
 
     def __post_init__(self) -> None:
-        if self.access_token and self.base_url == DEFAULT_BASE_URL:
+        if (self.access_token or (self.client_id and self.client_secret)) and self.base_url == DEFAULT_BASE_URL:
             self.base_url = "https://oauth.reddit.com"
         self.base_url = self.base_url.rstrip("/")
         self.scraper_api_base = self.scraper_api_base.rstrip("/")
+        self.brave_api_base = self.brave_api_base.rstrip("/")
 
     @classmethod
     def from_env(cls) -> "CollectorConfig":
         access_token = os.getenv("REDDIT_ACCESS_TOKEN", "").strip()
+        client_id = os.getenv("REDDIT_CLIENT_ID", "").strip()
+        client_secret = os.getenv("REDDIT_CLIENT_SECRET", "").strip()
         configured_base = os.getenv("REDDIT_BASE_URL", "").strip()
-        base_url = configured_base or ("https://oauth.reddit.com" if access_token else DEFAULT_BASE_URL)
+        base_url = configured_base or ("https://oauth.reddit.com" if (access_token or (client_id and client_secret)) else DEFAULT_BASE_URL)
         return cls(
             base_url=base_url.rstrip("/"),
             timeout=float(os.getenv("REDDIT_TIMEOUT", str(DEFAULT_TIMEOUT))),
@@ -113,8 +122,14 @@ class CollectorConfig:
             user_agent=os.getenv("REDDIT_USER_AGENT", DEFAULT_USER_AGENT),
             verify_tls=os.getenv("REDDIT_VERIFY_TLS", "true").lower() not in {"0", "false", "no"},
             access_token=access_token,
+            client_id=client_id,
+            client_secret=client_secret,
+            oauth_scope=os.getenv("REDDIT_OAUTH_SCOPE", "read").strip() or "read",
             scraper_api_key=os.getenv("SCRAPER_API_KEY", "").strip(),
             scraper_api_base=os.getenv("SCRAPER_API_BASE", "https://api.scraperapi.com").rstrip("/"),
+            brave_api_key=os.getenv("BRAVE_SEARCH_API_KEY", "").strip(),
+            brave_api_base=os.getenv("BRAVE_SEARCH_API_BASE", "https://api.search.brave.com/res/v1/web/search").rstrip("/"),
+            direct_enabled=os.getenv("REDDIT_DIRECT_ENABLED", "false").lower() in {"1", "true", "yes"},
         )
 
 
@@ -268,6 +283,18 @@ class RedditManager:
         posts: List[Dict[str, Any]] = []
         after: Optional[str] = None
         warnings: List[str] = []
+        if not self.config.direct_enabled:
+            return {
+                "schema_version": "1.1",
+                "query": query,
+                "retrieved_at": utc_now_iso(),
+                "source": "Reddit public JSON endpoints",
+                "transport": "disabled",
+                "evidence_policy": "Reddit posts and comments are user-generated signals and remain unverified until independently checked.",
+                "parameters": {"pages": pages, "posts_per_page": posts_per_page, "comments_limit": comments_limit, "sort": sort, "time_window": time_window},
+                "posts": [],
+                "warnings": ["Direct Reddit transport is disabled. Use an explicitly permitted fallback provider or set REDDIT_DIRECT_ENABLED=true only when direct access is authorized and available."],
+            }
 
         for _ in range(pages):
             params: Dict[str, Any] = {
@@ -323,6 +350,89 @@ class RedditManager:
         }
         return result
 
+    def search_via_brave(
+        self,
+        query: str,
+        count: int = 10,
+        country: str = "us",
+        search_lang: str = "en",
+    ) -> Dict[str, Any]:
+        query = _clean_text(query)
+        if not query:
+            raise ValueError("query must not be empty")
+        if not self.config.brave_api_key:
+            return {
+                "schema_version": "1.1",
+                "query": query,
+                "retrieved_at": utc_now_iso(),
+                "source": "Brave Search API",
+                "transport": "brave_search_api_unconfigured",
+                "evidence_policy": "Search snippets are discovery signals and remain unverified until the underlying source is independently checked.",
+                "posts": [],
+                "warnings": ["BRAVE_SEARCH_API_KEY is not configured."],
+            }
+        response = self.session.get(
+            self.config.brave_api_base,
+            headers={"Accept": "application/json", "X-Subscription-Token": self.config.brave_api_key},
+            params={"q": query, "count": max(1, min(int(count), 20)), "country": country, "search_lang": search_lang},
+            timeout=self.config.timeout,
+            verify=self.config.verify_tls,
+        )
+        if response.status_code >= 400:
+            raise RedditFetchError(f"Brave Search API HTTP status {response.status_code}")
+        payload = response.json()
+        results = ((payload or {}).get("web") or {}).get("results") or []
+        posts: List[Dict[str, Any]] = []
+        for item in results:
+            url = item.get("url") or ""
+            if "reddit.com" not in url.lower():
+                continue
+            posts.append({
+                "evidence_type": "community_search_snippet",
+                "title": _clean_text(item.get("title")),
+                "text": _clean_text(item.get("description")),
+                "url": url,
+                "score": None,
+                "num_comments": None,
+                "comments": [],
+                "media": [],
+                "verification_status": "unverified_search_snippet",
+                "provider": "Brave Search API",
+            })
+        return {
+            "schema_version": "1.1",
+            "query": query,
+            "retrieved_at": utc_now_iso(),
+            "source": "Brave Search API",
+            "transport": "brave_search_api",
+            "evidence_policy": "Search snippets are discovery signals and remain unverified until the underlying source is independently checked.",
+            "parameters": {"count": count, "country": country, "search_lang": search_lang},
+            "posts": posts,
+            "warnings": [] if posts else ["Brave returned no Reddit URLs for this query."],
+        }
+
+    def search_with_fallback(self, query: str, provider: str = "auto", **kwargs: Any) -> Dict[str, Any]:
+        provider = provider.lower().strip()
+        if provider not in {"auto", "reddit", "brave"}:
+            raise ValueError("provider must be auto, reddit, or brave")
+        if provider == "brave":
+            return self.search_via_brave(query, count=kwargs.get("posts_per_page", DEFAULT_POSTS_PER_PAGE))
+        if provider == "reddit":
+            config_was_disabled = not self.config.direct_enabled
+            if config_was_disabled:
+                return self.search(query, **kwargs)
+            return self.search(query, **kwargs)
+
+        if self.config.direct_enabled:
+            direct = self.search(query, **kwargs)
+            if direct.get("posts") or not direct.get("warnings"):
+                return direct
+        if self.config.brave_api_key:
+            return self.search_via_brave(query, count=kwargs.get("posts_per_page", DEFAULT_POSTS_PER_PAGE))
+        disabled = self.search(query, **kwargs)
+        disabled["warnings"].append("No permitted fallback provider is configured. Configure BRAVE_SEARCH_API_KEY for free-credit search or use an authorized Reddit API route.")
+        return disabled
+
 
 def _flatten_comments(comments: Sequence[Dict[str, Any]]) -> Iterable[Dict[str, Any]]:
     for comment in comments:
@@ -373,7 +483,7 @@ def generate_writer_brief(bundle: Dict[str, Any]) -> str:
 
 def get_community_intel(long_keyword: str) -> Tuple[str, List[Dict[str, Any]]]:
     """Backward-compatible adapter returning (brief, media_assets)."""
-    bundle = RedditManager().search(long_keyword)
+    bundle = RedditManager().search_with_fallback(long_keyword, provider=os.getenv("REDDIT_PROVIDER", "auto"))
     brief = generate_writer_brief(bundle)
     media_assets: List[Dict[str, Any]] = []
     for post in bundle.get("posts", []):

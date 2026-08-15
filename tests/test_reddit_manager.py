@@ -24,8 +24,18 @@ class RedditManagerTests(unittest.TestCase):
     def make_manager(self, responses, **config_overrides):
         session = Mock()
         session.get.side_effect = responses
-        config = CollectorConfig(delay=0, retries=1, timeout=1, user_agent="test-agent", **config_overrides)
+        defaults = {"direct_enabled": True}
+        defaults.update(config_overrides)
+        config = CollectorConfig(delay=0, retries=1, timeout=1, user_agent="test-agent", **defaults)
         return RedditManager(session=session, config=config), session
+
+    def test_direct_transport_is_disabled_by_default(self):
+        session = Mock()
+        manager = RedditManager(session=session, config=CollectorConfig(delay=0))
+        bundle = manager.search_with_fallback("test", provider="auto")
+        self.assertEqual(bundle["transport"], "disabled")
+        self.assertEqual(session.get.call_count, 0)
+        self.assertTrue(any("No permitted fallback" in warning for warning in bundle["warnings"]))
 
     def test_search_normalizes_post_and_comments(self):
         search_payload = {
@@ -117,6 +127,18 @@ class RedditManagerTests(unittest.TestCase):
         self.assertEqual(bundle["transport"], "direct")
         self.assertEqual(session.get.call_args_list[0].args[0], "https://oauth.reddit.com/search.json")
         self.assertNotIn("secret-token", str(session.get.call_args_list[0].kwargs))
+
+    def test_brave_search_parses_only_reddit_urls(self):
+        payload = {"web": {"results": [
+            {"title": "Reddit thread", "url": "https://www.reddit.com/r/test/comments/abc/example/", "description": "A snippet"},
+            {"title": "Other site", "url": "https://example.com/page", "description": "Ignore me"},
+        ]}}
+        manager, session = self.make_manager([FakeResponse(payload)], brave_api_key="brave-placeholder")
+        bundle = manager.search_with_fallback("test", provider="brave", posts_per_page=5)
+        self.assertEqual(bundle["transport"], "brave_search_api")
+        self.assertEqual(len(bundle["posts"]), 1)
+        self.assertEqual(bundle["posts"][0]["evidence_type"], "community_search_snippet")
+        self.assertIn("X-Subscription-Token", session.get.call_args.kwargs["headers"])
 
     def test_empty_query_is_rejected(self):
         manager, _ = self.make_manager([])
