@@ -6,7 +6,7 @@ Reddit Manager is a small Python research collector for **traceable community si
 
 ## Current access policy
 
-Reddit's current Data API guidance says that clients must authenticate with a registered OAuth token and that unauthenticated traffic may be blocked. The Yusuf environment is blocked from `oauth.reddit.com`, so direct Reddit transport is **disabled by default**. The default `auto` provider first looks for an explicitly configured free-credit discovery provider and otherwise returns a clear warning instead of retrying a blocked endpoint.
+Reddit's current Data API guidance says that clients must authenticate with a registered OAuth token and that unauthenticated traffic may be blocked. The Yusuf environment is blocked from `oauth.reddit.com`, so direct Reddit transport is **disabled by default**. The default provider is now `scraperapi`, which sends Reddit requests through ScraperAPI when an authorized key is configured. `auto` and `brave` remain explicit alternatives; without a ScraperAPI key the program returns a clear warning instead of retrying a blocked endpoint.
 
 The preferred fallback is Brave Search API when a valid key is available under its published free monthly credit. Brave's official page currently advertises $5 in free monthly credits, automatically applied to the account, and a published price of $5 per 1,000 requests. This is a quota, not permission to rotate accounts or evade limits. Use one account within its terms and allowance.
 
@@ -16,12 +16,12 @@ ScraperAPI can be configured as a direct Reddit transport when you have an autho
 
 The previous repository contained a file named `reddit_manager (3).py`, while the runner imported `reddit_manager`. The current version provides a normal importable `reddit_manager.py`, removes missing `ai_strategy` and `config` imports, adds deterministic local tests, normalizes posts and nested comments, preserves provenance, and emits explicit warnings.
 
-The current version also adds three provider modes:
+The current version also adds four provider modes:
 
 | Provider | Default | Use |
 |---|---:|---|
-| `auto` | Yes | Use configured ScraperAPI, then Brave, then an explicit direct route; otherwise return a warning |
-| `scraperapi` | No | Use ScraperAPI with one key or an authorized invalid-key failover pool |
+| `scraperapi` | Yes | Use ScraperAPI with one key or an authorized invalid-key failover pool |
+| `auto` | No | Use configured ScraperAPI, then Brave, then an explicit direct route; otherwise return a warning |
 | `brave` | No | Search the web for Reddit URLs and snippets without using `oauth.reddit.com` |
 | `reddit` | No | Use direct Reddit JSON only when `REDDIT_DIRECT_ENABLED=true` and an authorized route is actually available |
 
@@ -64,8 +64,8 @@ Expected result is a successful test run. Tests cover the disabled-direct defaul
 Create environment variables in the shell or a secret manager; never commit them to GitHub:
 
 ```bash
-export BRAVE_SEARCH_API_KEY="your_key_here"
-export REDDIT_PROVIDER="auto"
+export SCRAPER_API_KEYS_JSON='[{"id":"scraper-1","key":"NEW_KEY_1"}]'
+export REDDIT_PROVIDER="scraperapi"
 export REDDIT_DIRECT_ENABLED="false"
 ```
 
@@ -96,7 +96,7 @@ The following environment variables are optional. The first six are normally lef
 
 | Variable | Default | Meaning | Security |
 |---|---|---|---|
-| `REDDIT_PROVIDER` | `auto` | Select `auto`, `brave`, or `reddit` | Public |
+| `REDDIT_PROVIDER` | `scraperapi` | Select `scraperapi`, `auto`, `brave`, or `reddit` | Public |
 | `REDDIT_DIRECT_ENABLED` | `false` | Permit direct Reddit JSON only when explicitly enabled | Public |
 | `REDDIT_BASE_URL` | `https://www.reddit.com` | Reddit host used only by the direct provider | Public |
 | `REDDIT_TIMEOUT` | `30` | Per-request timeout in seconds | Public |

@@ -484,7 +484,7 @@ class RedditManager:
             "warnings": [] if posts else ["Brave returned no Reddit URLs for this query."],
         }
 
-    def search_with_fallback(self, query: str, provider: str = "auto", **kwargs: Any) -> Dict[str, Any]:
+    def search_with_fallback(self, query: str, provider: str = "scraperapi", **kwargs: Any) -> Dict[str, Any]:
         provider = provider.lower().strip()
         if provider not in {"auto", "reddit", "scraperapi", "brave"}:
             raise ValueError("provider must be auto, reddit, scraperapi, or brave")
@@ -557,7 +557,7 @@ def generate_writer_brief(bundle: Dict[str, Any]) -> str:
 
 def get_community_intel(long_keyword: str) -> Tuple[str, List[Dict[str, Any]]]:
     """Backward-compatible adapter returning (brief, media_assets)."""
-    bundle = RedditManager().search_with_fallback(long_keyword, provider=os.getenv("REDDIT_PROVIDER", "auto"))
+    bundle = RedditManager().search_with_fallback(long_keyword, provider=os.getenv("REDDIT_PROVIDER", "scraperapi"))
     brief = generate_writer_brief(bundle)
     media_assets: List[Dict[str, Any]] = []
     for post in bundle.get("posts", []):
