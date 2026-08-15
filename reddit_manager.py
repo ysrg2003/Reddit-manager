@@ -361,7 +361,12 @@ class RedditManager:
             errors.append(f"scraperapi/{key_id}: {last_error}")
         raise RedditFetchError("; ".join(errors) or "No ScraperAPI key is configured")
 
-    def _request_scraperapi_text(self, url: str, params: Dict[str, Any]) -> str:
+    def _request_scraperapi_text(
+        self,
+        url: str,
+        params: Dict[str, Any],
+        scraper_options: Optional[Dict[str, Any]] = None,
+    ) -> str:
         target_url = url if url.startswith("http") else f"{self.config.base_url}/{url.lstrip('/')}"
         prepared = requests.Request("GET", target_url, params=params).prepare().url
         errors: List[str] = []
@@ -369,7 +374,12 @@ class RedditManager:
             try:
                 response = self.session.get(
                     self.config.scraper_api_base,
-                    params={"api_key": secret, "url": prepared, "render": "false"},
+                    params={
+                        "api_key": secret,
+                        "url": prepared,
+                        "render": "false",
+                        **(scraper_options or {}),
+                    },
                     timeout=self.config.timeout,
                     verify=self.config.verify_tls,
                 )

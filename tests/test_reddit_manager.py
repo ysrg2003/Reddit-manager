@@ -142,6 +142,23 @@ class RedditManagerTests(unittest.TestCase):
         self.assertEqual(session.get.call_args.args[0], "https://api.scraperapi.com")
         self.assertEqual(session.get.call_args.kwargs["params"]["url"].split("?")[0], "https://old.reddit.com/search.json")
 
+    def test_scraperapi_text_render_option_is_explicit(self):
+        manager, session = self.make_manager(
+            [TextResponse("<html>sample</html>")],
+            direct_enabled=False,
+            scraper_api_keys=[("scraper-1", "placeholder-1")],
+        )
+        content = manager._request_scraperapi_text(
+            "https://old.reddit.com/r/test/comments/abc/example/",
+            {},
+            scraper_options={"render": "true"},
+        )
+        self.assertEqual(content, "<html>sample</html>")
+        params = session.get.call_args.kwargs["params"]
+        self.assertEqual(params["render"], "true")
+        self.assertEqual(params["api_key"], "placeholder-1")
+        self.assertIn("old.reddit.com/r/test/comments/abc/example/", params["url"])
+
     def test_scraperapi_scrapy_fetches_post_html_and_comments(self):
         search_html = '''
         <div class="thing link" data-permalink="/r/test/comments/abc/example/" data-subreddit="test">

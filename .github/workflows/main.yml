@@ -55,6 +55,16 @@ on:
         required: false
         type: string
         default: "testdata/gemini_quality_batch.json"
+      run_scraperapi_gemini:
+        description: "Fetch one Reddit post through ScraperAPI and analyze parsed content with Gemini"
+        required: false
+        type: boolean
+        default: false
+      gemini_reddit_url:
+        description: "One public Reddit post URL for the bounded ScraperAPI plus Gemini probe"
+        required: false
+        type: string
+        default: "https://old.reddit.com/r/AI_Agents/comments/1vkb9yy/the_biggest_trap_ive_hit_doing_vibe_coding_as/"
 
 jobs:
   offline-tests:
@@ -176,6 +186,37 @@ jobs:
         with:
           name: gemini-url-context-batch-${{ github.run_id }}
           path: artifacts/gemini-url-context-batch/
+          if-no-files-found: error
+
+  scraperapi-gemini:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_scraperapi_gemini == true }}
+    needs: offline-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Fetch one Reddit post through ScraperAPI and analyze with Gemini
+        env:
+          SCRAPER_API_KEYS_JSON: ${{ secrets.SCRAPER_API_KEYS_JSON }}
+          GEMINI_API_KEY: ${{ secrets.Gemini_API_key }}
+          GEMINI_REDDIT_URL: ${{ inputs.gemini_reddit_url }}
+          GEMINI_OUTPUT_DIR: artifacts/scraperapi-gemini
+          REDDIT_DIRECT_ENABLED: "false"
+          REDDIT_TIMEOUT: "70"
+          REDDIT_RETRIES: "0"
+          REDDIT_REQUEST_DELAY: "0.5"
+        run: python scripts/scraperapi_gemini_probe.py --comments-limit 30
+      - name: Upload ScraperAPI plus Gemini report
+        uses: actions/upload-artifact@v4
+        with:
+          name: scraperapi-gemini-${{ github.run_id }}
+          path: artifacts/scraperapi-gemini/
           if-no-files-found: error
 
   optional-network-search:
