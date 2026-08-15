@@ -58,12 +58,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Fetch one public Reddit HTML page through ScraperAPI and summarize it with Scrapy")
     parser.add_argument("--output-dir", default="artifacts/scrapy-html-probe")
     parser.add_argument("--timeout", type=float, default=70.0)
+    parser.add_argument("--render", action="store_true", help="Ask ScraperAPI to render the target page")
     args = parser.parse_args()
     query = urlencode({"q": "vibe coding trap why building assisted", "limit": 5, "sort": "relevance", "t": "all", "raw_json": 1})
     target = f"https://old.reddit.com/search.json?{query}"
     response = requests.get(
         "https://api.scraperapi.com",
-        params={"api_key": first_key(), "url": target, "render": "false"},
+        params={"api_key": first_key(), "url": target, "render": "true" if args.render else "false"},
         timeout=args.timeout,
     )
     output = Path(args.output_dir)
@@ -73,6 +74,7 @@ def main() -> int:
         "status_code": response.status_code,
         "content_type": response.headers.get("content-type", ""),
         "body_length": len(response.content),
+        "render_requested": args.render,
         "summary": summarize(response.text),
         "security_note": "The ScraperAPI key is not stored in this report or HTML artifact.",
     }

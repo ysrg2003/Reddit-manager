@@ -97,7 +97,7 @@ jobs:
       - name: Inspect returned HTML with Scrapy
         env:
           SCRAPER_API_KEYS_JSON: ${{ secrets.SCRAPER_API_KEYS_JSON }}
-        run: python scripts/scrapy_html_probe.py --output-dir artifacts/scrapy-html-probe --timeout 70
+        run: python scripts/scrapy_html_probe.py --output-dir artifacts/scrapy-html-probe --timeout 70 --render
       - name: Upload Scrapy evidence sample
         uses: actions/upload-artifact@v4
         with:
