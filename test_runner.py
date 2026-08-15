@@ -18,7 +18,7 @@ from reddit_manager import RedditManager, generate_writer_brief
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Collect Reddit research evidence")
     parser.add_argument("--query", default=os.getenv("TEST_KEYWORD"), help="Research query")
-    parser.add_argument("--provider", default=os.getenv("REDDIT_PROVIDER", "auto"), choices=["auto", "reddit", "brave"], help="Evidence transport")
+    parser.add_argument("--provider", default=os.getenv("REDDIT_PROVIDER", "auto"), choices=["auto", "reddit", "scraperapi", "brave"], help="Evidence transport")
     parser.add_argument("--output-dir", default="artifacts", help="Directory for evidence artifacts")
     parser.add_argument("--pages", type=int, default=2)
     parser.add_argument("--posts-per-page", type=int, default=10)

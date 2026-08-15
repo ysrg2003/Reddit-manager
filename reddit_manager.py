@@ -12,7 +12,7 @@ import json
 import os
 import re
 import time
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 from urllib.parse import quote_plus
@@ -59,6 +59,34 @@ def _dedupe(values: Iterable[str]) -> List[str]:
     return result
 
 
+def _parse_secret_pool(raw: str, provider: str) -> List[Tuple[str, str]]:
+    """Parse ordered secret entries without exposing their values."""
+    raw = (raw or "").strip()
+    if not raw:
+        return []
+    try:
+        values: Any = json.loads(raw)
+    except json.JSONDecodeError:
+        values = [raw]
+    if isinstance(values, dict):
+        values = values.get("keys") or values.get("items") or values.get("entries") or [values]
+    if isinstance(values, str):
+        values = [values]
+    if not isinstance(values, list):
+        raise ValueError(f"{provider} key pool must be a JSON array or a single key")
+    aliases = ("key", "api_key", "token", "secret", "value")
+    result: List[Tuple[str, str]] = []
+    for index, item in enumerate(values, 1):
+        if isinstance(item, str) and item.strip():
+            result.append((f"{provider}-{index}", item.strip()))
+        elif isinstance(item, dict):
+            secret = next((item.get(alias) for alias in aliases if item.get(alias)), None)
+            if secret:
+                key_id = str(item.get("id") or item.get("name") or f"{provider}-{index}")
+                result.append((key_id, str(secret).strip()))
+    return result
+
+
 def _media_urls(data: Dict[str, Any]) -> List[str]:
     urls: List[str] = []
     candidate = data.get("url")
@@ -95,6 +123,7 @@ class CollectorConfig:
     client_secret: str = ""
     oauth_scope: str = "read"
     scraper_api_key: str = ""
+    scraper_api_keys: List[Tuple[str, str]] = field(default_factory=list)
     scraper_api_base: str = "https://api.scraperapi.com"
     brave_api_key: str = ""
     brave_api_base: str = "https://api.search.brave.com/res/v1/web/search"
@@ -104,6 +133,8 @@ class CollectorConfig:
         if (self.access_token or (self.client_id and self.client_secret)) and self.base_url == DEFAULT_BASE_URL:
             self.base_url = "https://oauth.reddit.com"
         self.base_url = self.base_url.rstrip("/")
+        if not self.scraper_api_keys and self.scraper_api_key:
+            self.scraper_api_keys = [("scraperapi-single", self.scraper_api_key)]
         self.scraper_api_base = self.scraper_api_base.rstrip("/")
         self.brave_api_base = self.brave_api_base.rstrip("/")
 
@@ -126,6 +157,10 @@ class CollectorConfig:
             client_secret=client_secret,
             oauth_scope=os.getenv("REDDIT_OAUTH_SCOPE", "read").strip() or "read",
             scraper_api_key=os.getenv("SCRAPER_API_KEY", "").strip(),
+            scraper_api_keys=_parse_secret_pool(
+                os.getenv("SCRAPER_API_KEYS_JSON", "") or os.getenv("AI_ROUTER_SCRAPERAPI_KEYS_JSON", ""),
+                "scraperapi",
+            ),
             scraper_api_base=os.getenv("SCRAPER_API_BASE", "https://api.scraperapi.com").rstrip("/"),
             brave_api_key=os.getenv("BRAVE_SEARCH_API_KEY", "").strip(),
             brave_api_base=os.getenv("BRAVE_SEARCH_API_BASE", "https://api.search.brave.com/res/v1/web/search").rstrip("/"),
@@ -152,26 +187,64 @@ class RedditManager:
         self.last_warnings: List[str] = []
         self.last_transport: str = "none"
 
+    def _request_scraperapi(self, url: str, params: Dict[str, Any]) -> Any:
+        prepared = requests.Request("GET", url, params=params).prepare().url
+        errors: List[str] = []
+        for key_id, secret in self.config.scraper_api_keys:
+            last_error: Optional[Exception] = None
+            for attempt in range(self.config.retries + 1):
+                try:
+                    response = self.session.get(
+                        self.config.scraper_api_base,
+                        params={"api_key": secret, "url": prepared, "render": "false"},
+                        timeout=self.config.timeout,
+                        verify=self.config.verify_tls,
+                    )
+                    status = int(getattr(response, "status_code", 0))
+                    if status == 429:
+                        raise RedditFetchError("ScraperAPI quota/rate limit reached; key failover is disabled for this response")
+                    if status in {401, 403}:
+                        raise RedditFetchError(f"ScraperAPI key rejected with HTTP status {status}")
+                    if status >= 500:
+                        raise RedditFetchError(f"retryable HTTP status {status}")
+                    if status >= 400:
+                        raise RedditFetchError(f"HTTP status {status}")
+                    payload = response.json()
+                    self.last_transport = "scraperapi"
+                    if self.config.delay and attempt == 0:
+                        time.sleep(self.config.delay)
+                    return payload
+                except (requests.RequestException, ValueError, RedditFetchError) as exc:
+                    last_error = exc
+                    message = str(exc)
+                    if "quota/rate limit" in message:
+                        raise RedditFetchError(message) from exc
+                    if "key rejected" in message:
+                        break
+                    if attempt >= self.config.retries:
+                        break
+                    time.sleep(min(30.0, self.config.delay * (2 ** attempt)))
+            errors.append(f"scraperapi/{key_id}: {last_error}")
+        raise RedditFetchError("; ".join(errors) or "No ScraperAPI key is configured")
+
     def _request_json(self, path: str, params: Optional[Dict[str, Any]] = None) -> Any:
         url = path if path.startswith("http") else f"{self.config.base_url}/{path.lstrip('/')}"
         request_params = dict(params or {})
-        transports: List[Tuple[str, str, Dict[str, Any]]] = []
-
-        # OAuth requests must go directly to oauth.reddit.com. A proxy should
-        # never receive an OAuth access token or be used to bypass OAuth policy.
-        if self.config.scraper_api_key and not self.config.access_token:
-            prepared = requests.Request("GET", url, params=request_params).prepare().url
-            transports.append((
-                "scraperapi",
-                self.config.scraper_api_base,
-                {
-                    "api_key": self.config.scraper_api_key,
-                    "url": prepared,
-                    "render": "false",
-                },
-            ))
-        transports.append(("direct", url, request_params))
         errors: List[str] = []
+
+        # ScraperAPI is an explicit proxy path. Failover is allowed only for
+        # rejected/invalid keys; quota exhaustion stops the request.
+        if self.config.scraper_api_keys and not self.config.access_token:
+            try:
+                return self._request_scraperapi(url, request_params)
+            except RedditFetchError as exc:
+                if "quota/rate limit" in str(exc):
+                    raise
+                errors.append(str(exc))
+
+        transports: List[Tuple[str, str, Dict[str, Any]]] = []
+        if self.config.direct_enabled:
+            transports.append(("direct", url, request_params))
 
         for transport_name, request_url, transport_params in transports:
             last_error: Optional[Exception] = None
@@ -283,7 +356,7 @@ class RedditManager:
         posts: List[Dict[str, Any]] = []
         after: Optional[str] = None
         warnings: List[str] = []
-        if not self.config.direct_enabled:
+        if not self.config.direct_enabled and not self.config.scraper_api_keys:
             return {
                 "schema_version": "1.1",
                 "query": query,
@@ -413,16 +486,17 @@ class RedditManager:
 
     def search_with_fallback(self, query: str, provider: str = "auto", **kwargs: Any) -> Dict[str, Any]:
         provider = provider.lower().strip()
-        if provider not in {"auto", "reddit", "brave"}:
-            raise ValueError("provider must be auto, reddit, or brave")
+        if provider not in {"auto", "reddit", "scraperapi", "brave"}:
+            raise ValueError("provider must be auto, reddit, scraperapi, or brave")
         if provider == "brave":
             return self.search_via_brave(query, count=kwargs.get("posts_per_page", DEFAULT_POSTS_PER_PAGE))
-        if provider == "reddit":
-            config_was_disabled = not self.config.direct_enabled
-            if config_was_disabled:
-                return self.search(query, **kwargs)
+        if provider in {"reddit", "scraperapi"}:
             return self.search(query, **kwargs)
 
+        if self.config.scraper_api_keys and not self.config.access_token:
+            scraper = self.search(query, **kwargs)
+            if scraper.get("posts") or not self.config.brave_api_key:
+                return scraper
         if self.config.direct_enabled:
             direct = self.search(query, **kwargs)
             if direct.get("posts") or not direct.get("warnings"):

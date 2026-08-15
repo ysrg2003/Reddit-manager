@@ -106,22 +106,32 @@ class RedditManagerTests(unittest.TestCase):
         self.assertEqual(bundle["posts"], [])
         self.assertEqual(session.get.call_count, 2)
 
-    def test_scraper_fallback_is_used_after_direct_failure(self):
+    def test_scraper_key_failover_only_after_key_rejection(self):
         manager, session = self.make_manager(
             [FakeResponse({}, 403), FakeResponse({"data": {"children": [], "after": None}})],
-            scraper_api_key="placeholder",
+            direct_enabled=False,
+            scraper_api_keys=[("scraper-1", "placeholder-1"), ("scraper-2", "placeholder-2")],
         )
         bundle = manager.search("fallback", pages=1)
         self.assertEqual(bundle["transport"], "scraperapi")
-        first_call_url = session.get.call_args_list[0].args[0]
-        self.assertIn("api.scraperapi.com", first_call_url)
-        self.assertEqual(bundle["posts"], [])
+        self.assertEqual(session.get.call_count, 2)
+        self.assertEqual(session.get.call_args_list[0].args[0], "https://api.scraperapi.com")
+
+    def test_scraper_quota_does_not_rotate_keys(self):
+        manager, session = self.make_manager(
+            [FakeResponse({}, 429), FakeResponse({"data": {"children": [], "after": None}})],
+            direct_enabled=False,
+            scraper_api_keys=[("scraper-1", "placeholder-1"), ("scraper-2", "placeholder-2")],
+        )
+        bundle = manager.search("quota", pages=1)
+        self.assertEqual(session.get.call_count, 1)
+        self.assertTrue(any("quota/rate limit" in warning for warning in bundle["warnings"]))
 
     def test_oauth_is_not_sent_to_proxy(self):
         manager, session = self.make_manager(
             [FakeResponse({"data": {"children": [], "after": None}})],
             access_token="secret-token",
-            scraper_api_key="placeholder",
+            scraper_api_keys=[("scraper-1", "placeholder")],
         )
         bundle = manager.search("oauth", pages=1)
         self.assertEqual(bundle["transport"], "direct")

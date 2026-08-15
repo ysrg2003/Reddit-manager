@@ -10,6 +10,8 @@ Reddit's current Data API guidance says that clients must authenticate with a re
 
 The preferred fallback is Brave Search API when a valid key is available under its published free monthly credit. Brave's official page currently advertises $5 in free monthly credits, automatically applied to the account, and a published price of $5 per 1,000 requests. This is a quota, not permission to rotate accounts or evade limits. Use one account within its terms and allowance.
 
+ScraperAPI can be configured as a direct Reddit transport when you have an authorized free plan or trial. A key pool is accepted for deterministic failover only when a particular key is rejected as invalid or unauthorized. A `429` response is treated as quota/rate-limit exhaustion: the request stops and no other key is tried. This prevents the router from becoming a quota-evasion mechanism.
+
 ## What changed
 
 The previous repository contained a file named `reddit_manager (3).py`, while the runner imported `reddit_manager`. The current version provides a normal importable `reddit_manager.py`, removes missing `ai_strategy` and `config` imports, adds deterministic local tests, normalizes posts and nested comments, preserves provenance, and emits explicit warnings.
@@ -18,7 +20,8 @@ The current version also adds three provider modes:
 
 | Provider | Default | Use |
 |---|---:|---|
-| `auto` | Yes | Use configured Brave free-credit discovery; otherwise return a disabled/direct-access warning |
+| `auto` | Yes | Use configured ScraperAPI, then Brave, then an explicit direct route; otherwise return a warning |
+| `scraperapi` | No | Use ScraperAPI with one key or an authorized invalid-key failover pool |
 | `brave` | No | Search the web for Reddit URLs and snippets without using `oauth.reddit.com` |
 | `reddit` | No | Use direct Reddit JSON only when `REDDIT_DIRECT_ENABLED=true` and an authorized route is actually available |
 
@@ -32,7 +35,7 @@ Brave results are discovery snippets. The program does not fetch or pretend to h
 | `requests` | Yes | HTTP requests |
 | Brave Search API key | No | Preferred fallback when direct Reddit is blocked |
 | Reddit OAuth | No | Not used in Yusuf's blocked environment |
-| ScraperAPI key | No | Optional legacy proxy path; not the default and may be paid |
+| ScraperAPI key or authorized pool | No | Optional Reddit transport; use only keys and free credits you are authorized to use |
 
 ## Install
 
@@ -107,10 +110,12 @@ The following environment variables are optional. The first six are normally lef
 | `REDDIT_OAUTH_SCOPE` | `read` | OAuth scope requested by a separately authorized route | Public |
 | `BRAVE_SEARCH_API_KEY` | Empty | Preferred fallback key for the free-credit search plan | Secret |
 | `BRAVE_SEARCH_API_BASE` | Brave web search endpoint | Brave endpoint | Public |
-| `SCRAPER_API_KEY` | Empty | Optional legacy proxy path; may be paid | Secret |
+| `SCRAPER_API_KEY` | Empty | One ScraperAPI key | Secret |
+| `SCRAPER_API_KEYS_JSON` | `[]` | Ordered authorized keys for invalid-key failover only | Secret |
+| `AI_ROUTER_SCRAPERAPI_KEYS_JSON` | `[]` | Compatibility alias for a separately authorized shared pool | Secret |
 | `SCRAPER_API_BASE` | `https://api.scraperapi.com` | Proxy endpoint | Public |
 
-Do not configure both a free fallback and a paid proxy as if they were equivalent. The default project policy is no paid service. If a provider offers free credits, use only the published allowance on an account and respect its terms. Do not rotate accounts to evade rate limits, billing controls, identity checks, or provider restrictions.
+Do not configure both a free fallback and a paid proxy as if they were equivalent. The default project policy is no paid service. If ScraperAPI is used, store one key in `SCRAPER_API_KEY` or an authorized ordered list in `SCRAPER_API_KEYS_JSON`. The project moves to the next key only after a 401/403-style key rejection; it stops on 429, quota exhaustion, or provider-level blocking. Do not rotate accounts or keys to evade rate limits, billing controls, identity checks, or provider restrictions.
 
 ## Research interpretation rules
 
