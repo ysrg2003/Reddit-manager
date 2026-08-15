@@ -338,6 +338,59 @@ class RedditManager:
         comments = ((payload[1].get("data") or {}).get("children") or [])
         return self._parse_post(post_data, comments)
 
+    def search_listing(
+        self,
+        query: str,
+        posts_per_page: int = DEFAULT_POSTS_PER_PAGE,
+        sort: str = "relevance",
+        time_window: str = "all",
+    ) -> Dict[str, Any]:
+        """Fetch one Reddit search listing without fetching post detail pages."""
+        query = _clean_text(query)
+        if not query:
+            raise ValueError("query must not be empty")
+        params = {
+            "q": query,
+            "limit": max(1, min(int(posts_per_page), 100)),
+            "sort": sort,
+            "t": time_window,
+            "raw_json": 1,
+        }
+        payload = self._request_json("/search.json", params)
+        children = ((payload or {}).get("data") or {}).get("children") or []
+        posts: List[Dict[str, Any]] = []
+        for child in children:
+            data = child.get("data") or {}
+            permalink = _safe_permalink(data.get("permalink"))
+            if not permalink:
+                continue
+            posts.append({
+                "evidence_type": "community_signal_listing",
+                "post_id": data.get("id"),
+                "subreddit": _clean_text(data.get("subreddit")),
+                "title": _clean_text(data.get("title")),
+                "text": _clean_text(data.get("selftext")),
+                "author": _clean_text(data.get("author")),
+                "score": data.get("score"),
+                "num_comments": data.get("num_comments"),
+                "url": f"https://www.reddit.com{permalink}",
+                "permalink": permalink,
+                "comments": [],
+                "media": [],
+                "verification_status": "unverified_user_generated_content",
+            })
+        return {
+            "schema_version": "1.1",
+            "query": query,
+            "retrieved_at": utc_now_iso(),
+            "source": "Reddit search listing via ScraperAPI",
+            "transport": self.last_transport,
+            "evidence_policy": "Search listings are user-generated signals and remain unverified until the source page and important claims are independently checked.",
+            "parameters": params,
+            "posts": posts,
+            "warnings": [],
+        }
+
     def search(
         self,
         query: str,

@@ -49,13 +49,18 @@ def main() -> int:
                 "warnings": ["Skipped after ScraperAPI quota/rate-limit signal to avoid further usage."],
             })
             continue
-        bundle = manager.search_with_fallback(
-            item["query"],
-            provider="scraperapi",
-            pages=args.pages,
-            posts_per_page=args.posts_per_page,
-            comments_limit=args.comments_limit,
-        )
+        try:
+            bundle = manager.search_listing(
+                item["query"],
+                posts_per_page=args.posts_per_page,
+            )
+        except Exception as exc:
+            bundle = {
+                "transport": "scraperapi",
+                "posts": [],
+                "warnings": [str(exc)],
+                "retrieved_at": None,
+            }
         posts = bundle.get("posts") or []
         warnings = [str(value) for value in (bundle.get("warnings") or [])]
         quota_signal = any("quota" in warning.lower() or "rate limit" in warning.lower() or "429" in warning for warning in warnings)
