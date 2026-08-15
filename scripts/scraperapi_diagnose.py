@@ -51,6 +51,7 @@ def target_urls() -> list[tuple[str, str]]:
         ("provider-health", "https://example.com"),
         ("reddit-json", f"https://www.reddit.com/search.json?{query}"),
         ("reddit-html", f"https://www.reddit.com/search/?{html_query}"),
+        ("reddit-html-render", f"https://www.reddit.com/search/?{html_query}"),
     ]
 
 
@@ -121,7 +122,11 @@ def main() -> int:
         try:
             response = session.get(
                 base,
-                params={"api_key": secret, "url": target, "render": "false"},
+                params={
+                    "api_key": secret,
+                    "url": target,
+                    "render": "true" if label == "reddit-html-render" else "false",
+                },
                 timeout=args.timeout,
                 verify=True,
             )
@@ -134,7 +139,7 @@ def main() -> int:
                 "body_length": len(response.content),
                 "content_type": response.headers.get("content-type", ""),
             }
-            if label == "reddit-html" and response.status_code == 200:
+            if label in {"reddit-html", "reddit-html-render"} and response.status_code == 200:
                 result["html_structure"] = summarize_html(response.text)
             results.append(result)
             print(f"{label}: status={response.status_code} elapsed={elapsed}s bytes={len(response.content)}", flush=True)
