@@ -62,9 +62,14 @@ class _HTMLStructureParser(HTMLParser):
         self.samples = []
         self.capture_depth = 0
         self.text_parts = []
+        self.current_link = None
+        self.link_samples = []
 
     def handle_starttag(self, tag, attrs):
         self.tags[tag.lower()] += 1
+        if tag.lower() == "a":
+            href = next((value for name, value in attrs if name == "href" and value), "")
+            self.current_link = {"path": urlparse(href).path[:300] if href else "", "text": ""}
         if len(self.samples) < 80:
             keys = sorted({name for name, _ in attrs})
             href = next((value for name, value in attrs if name == "href" and value), "")
@@ -76,10 +81,19 @@ class _HTMLStructureParser(HTMLParser):
             self.capture_depth += 1
 
     def handle_endtag(self, tag):
+        if tag.lower() == "a" and self.current_link is not None:
+            if self.current_link.get("path") and len(self.link_samples) < 120:
+                self.link_samples.append({
+                    "path": self.current_link["path"],
+                    "text": " ".join(self.current_link.get("text", "").split())[:240],
+                })
+            self.current_link = None
         if tag.lower() in {"script", "style"} and self.capture_depth:
             self.capture_depth -= 1
 
     def handle_data(self, data):
+        if self.current_link is not None and not self.capture_depth:
+            self.current_link["text"] += " " + data
         if not self.capture_depth:
             text = " ".join(data.split())
             if text and len(self.text_parts) < 20:
@@ -93,6 +107,7 @@ def summarize_html(content: str) -> dict:
     return {
         "tag_counts": dict(parser.tags.most_common(30)),
         "sample_elements": parser.samples,
+        "link_samples": parser.link_samples,
         "text_samples": parser.text_parts,
     }
 
