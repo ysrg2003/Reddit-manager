@@ -1,0 +1,137 @@
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import time
+from pathlib import Path
+from urllib.parse import urlencode
+
+import requests
+
+
+DEFAULT_BASE = "https://api.scraperapi.com"
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Diagnose ScraperAPI key, API health, and Reddit target compatibility")
+    parser.add_argument("--output-dir", default="artifacts/scraperapi-diagnosis")
+    parser.add_argument("--timeout", type=float, default=70.0)
+    return parser.parse_args()
+
+
+def parse_first_key() -> tuple[str, str]:
+    raw = (os.getenv("SCRAPER_API_KEYS_JSON") or os.getenv("AI_ROUTER_SCRAPERAPI_KEYS_JSON") or "").strip()
+    if not raw:
+        raise SystemExit("SCRAPER_API_KEYS_JSON is not available.")
+    try:
+        values = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise SystemExit("SCRAPER_API_KEYS_JSON must be valid JSON.") from exc
+    if not isinstance(values, list):
+        raise SystemExit("SCRAPER_API_KEYS_JSON must be a JSON array.")
+    for index, item in enumerate(values, 1):
+        if isinstance(item, str) and item.strip():
+            return f"scraperapi-{index}", item.strip()
+        if isinstance(item, dict):
+            for field in ("key", "api_key", "token", "secret", "value"):
+                value = item.get(field)
+                if value:
+                    return str(item.get("id") or item.get("name") or f"scraperapi-{index}"), str(value).strip()
+    raise SystemExit("SCRAPER_API_KEYS_JSON contains no usable key.")
+
+
+def target_urls() -> list[tuple[str, str]]:
+    query = urlencode({"q": "vibe coding trap why building assisted", "limit": 1, "sort": "relevance", "t": "all", "raw_json": 1})
+    html_query = urlencode({"q": "vibe coding trap why building assisted", "sort": "relevance"})
+    return [
+        ("provider-health", "https://example.com"),
+        ("reddit-json", f"https://www.reddit.com/search.json?{query}"),
+        ("reddit-html", f"https://www.reddit.com/search/?{html_query}"),
+    ]
+
+
+def classify(status: int, body_length: int) -> str:
+    if status in {200, 404}:
+        return "provider_response"
+    if status in {401, 403}:
+        return "key_or_access_rejected"
+    if status == 429:
+        return "quota_or_concurrency_limited"
+    if status == 500:
+        return "target_fetch_failed_or_provider_retry_exhausted"
+    if status >= 400:
+        return "provider_error"
+    return "unexpected"
+
+
+def main() -> int:
+    args = parse_args()
+    key_id, secret = parse_first_key()
+    base = os.getenv("SCRAPER_API_BASE", DEFAULT_BASE).rstrip("/")
+    session = requests.Session()
+    results = []
+    for label, target in target_urls():
+        started = time.monotonic()
+        try:
+            response = session.get(
+                base,
+                params={"api_key": secret, "url": target, "render": "false"},
+                timeout=args.timeout,
+                verify=True,
+            )
+            elapsed = round(time.monotonic() - started, 3)
+            results.append({
+                "target": label,
+                "status_code": response.status_code,
+                "classification": classify(response.status_code, len(response.content)),
+                "elapsed_seconds": elapsed,
+                "body_length": len(response.content),
+                "content_type": response.headers.get("content-type", ""),
+            })
+            print(f"{label}: status={response.status_code} elapsed={elapsed}s bytes={len(response.content)}", flush=True)
+            if response.status_code == 429:
+                break
+        except requests.RequestException as exc:
+            elapsed = round(time.monotonic() - started, 3)
+            results.append({
+                "target": label,
+                "status_code": None,
+                "classification": "client_or_network_error",
+                "elapsed_seconds": elapsed,
+                "error_type": type(exc).__name__,
+            })
+            print(f"{label}: error={type(exc).__name__} elapsed={elapsed}s", flush=True)
+            break
+
+    report = {
+        "schema_version": "1.0",
+        "provider": "scraperapi",
+        "key_id_used": key_id,
+        "timeout_seconds": args.timeout,
+        "results": results,
+        "security_note": "The API key value and response bodies are intentionally excluded.",
+    }
+    output = Path(args.output_dir)
+    output.mkdir(parents=True, exist_ok=True)
+    (output / "scraperapi_diagnosis.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    lines = [
+        "# ScraperAPI Diagnosis",
+        "",
+        f"- Key identifier used: `{key_id}`",
+        f"- Timeout per request: `{args.timeout}` seconds",
+        "",
+        "| Target | HTTP status | Classification | Seconds | Bytes |",
+        "|---|---:|---|---:|---:|",
+    ]
+    for result in results:
+        lines.append(
+            f"| `{result['target']}` | `{result.get('status_code', '')}` | `{result['classification']}` | `{result['elapsed_seconds']}` | `{result.get('body_length', '')}` |"
+        )
+    lines.extend(["", "> API key values and response bodies are intentionally excluded."])
+    (output / "scraperapi_diagnosis.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
