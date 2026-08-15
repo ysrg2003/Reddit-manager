@@ -51,6 +51,7 @@ def target_urls() -> list[tuple[str, str]]:
     return [
         ("provider-health", "https://example.com"),
         ("reddit-json", f"https://www.reddit.com/search.json?{query}"),
+        ("reddit-old-search-json", f"https://old.reddit.com/search.json?{query}"),
         ("reddit-html", f"https://www.reddit.com/search/?{html_query}"),
         ("reddit-html-render", f"https://www.reddit.com/search/?{html_query}"),
         ("reddit-post-html", post_url),
@@ -188,7 +189,7 @@ def main() -> int:
             }
             if label in {"reddit-html", "reddit-html-render", "reddit-post-html", "reddit-old-post-json", "reddit-old-post-json-no-redirect"} and response.status_code == 200:
                 result["html_structure"] = summarize_html(response.text)
-            if label in {"reddit-post-autoparse", "reddit-post-json", "reddit-post-json-premium", "reddit-old-post-json", "reddit-old-post-json-no-redirect", "oauth-reddit-post-json"} and response.status_code == 200:
+            if label in {"reddit-post-autoparse", "reddit-post-json", "reddit-post-json-premium", "reddit-old-search-json", "reddit-old-post-json", "reddit-old-post-json-no-redirect", "oauth-reddit-post-json"} and response.status_code == 200:
                 try:
                     parsed = response.json()
                     result["json_type"] = type(parsed).__name__
