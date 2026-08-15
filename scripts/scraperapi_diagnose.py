@@ -57,7 +57,9 @@ def target_urls() -> list[tuple[str, str]]:
         ("reddit-post-json", post_url.rstrip("/") + "/.json?raw_json=1&limit=100"),
         ("reddit-post-json-premium", post_url.rstrip("/") + "/.json?raw_json=1&limit=100"),
         ("reddit-old-post-json", post_url.replace("https://www.reddit.com", "https://old.reddit.com").rstrip("/") + "/.json?raw_json=1&limit=100"),
+        ("reddit-old-post-json-no-redirect", post_url.replace("https://www.reddit.com", "https://old.reddit.com").rstrip("/") + "/.json?raw_json=1&limit=100"),
         ("reddit-post-autoparse", post_url),
+        ("oauth-reddit-post-json", post_url.replace("https://www.reddit.com", "https://oauth.reddit.com").rstrip("/") + "/.json?raw_json=1&limit=100"),
     ]
 
 
@@ -138,18 +140,39 @@ def main() -> int:
     base = os.getenv("SCRAPER_API_BASE", DEFAULT_BASE).rstrip("/")
     session = requests.Session()
     results = []
+    oauth_token = os.getenv("REDDIT_ACCESS_TOKEN", "").strip()
     for label, target in target_urls():
+        if label == "oauth-reddit-post-json" and not oauth_token:
+            results.append({
+                "target": label,
+                "status_code": None,
+                "classification": "missing_oauth_token",
+                "elapsed_seconds": 0,
+            })
+            print(f"{label}: skipped=missing_oauth_token", flush=True)
+            continue
         started = time.monotonic()
         try:
+            request_headers = {}
+            request_params = {
+                "api_key": secret,
+                "url": target,
+                "render": "true" if label == "reddit-html-render" else "false",
+                "autoparse": "true" if label == "reddit-post-autoparse" else "false",
+                                    "premium": "true" if label == "reddit-post-json-premium" else "false",
+                    "follow_redirect": "false" if label == "reddit-old-post-json-no-redirect" else "true",
+
+            }
+            if label == "oauth-reddit-post-json":
+                request_params["keep_headers"] = "true"
+                request_headers = {
+                    "Authorization": f"Bearer {oauth_token}",
+                    "User-Agent": "YusufRedditResearch/1.0 (research evidence collector)",
+                }
             response = session.get(
                 base,
-                params={
-                    "api_key": secret,
-                    "url": target,
-                    "render": "true" if label == "reddit-html-render" else "false",
-                    "autoparse": "true" if label == "reddit-post-autoparse" else "false",
-                    "premium": "true" if label == "reddit-post-json-premium" else "false",
-                },
+                params=request_params,
+                headers=request_headers,
                 timeout=args.timeout,
                 verify=True,
             )
@@ -161,10 +184,11 @@ def main() -> int:
                 "elapsed_seconds": elapsed,
                 "body_length": len(response.content),
                 "content_type": response.headers.get("content-type", ""),
+                "redirect_location": response.headers.get("location", ""),
             }
-            if label in {"reddit-html", "reddit-html-render", "reddit-post-html"} and response.status_code == 200:
+            if label in {"reddit-html", "reddit-html-render", "reddit-post-html", "reddit-old-post-json", "reddit-old-post-json-no-redirect"} and response.status_code == 200:
                 result["html_structure"] = summarize_html(response.text)
-            if label in {"reddit-post-autoparse", "reddit-post-json", "reddit-post-json-premium"} and response.status_code == 200:
+            if label in {"reddit-post-autoparse", "reddit-post-json", "reddit-post-json-premium", "reddit-old-post-json", "reddit-old-post-json-no-redirect", "oauth-reddit-post-json"} and response.status_code == 200:
                 try:
                     parsed = response.json()
                     result["json_type"] = type(parsed).__name__
