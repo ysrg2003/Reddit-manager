@@ -54,6 +54,7 @@ def target_urls() -> list[tuple[str, str]]:
         ("reddit-html", f"https://www.reddit.com/search/?{html_query}"),
         ("reddit-html-render", f"https://www.reddit.com/search/?{html_query}"),
         ("reddit-post-html", post_url),
+        ("reddit-post-autoparse", post_url),
     ]
 
 
@@ -143,6 +144,7 @@ def main() -> int:
                     "api_key": secret,
                     "url": target,
                     "render": "true" if label == "reddit-html-render" else "false",
+                    "autoparse": "true" if label == "reddit-post-autoparse" else "false",
                 },
                 timeout=args.timeout,
                 verify=True,
@@ -158,6 +160,17 @@ def main() -> int:
             }
             if label in {"reddit-html", "reddit-html-render", "reddit-post-html"} and response.status_code == 200:
                 result["html_structure"] = summarize_html(response.text)
+            if label == "reddit-post-autoparse" and response.status_code == 200:
+                try:
+                    parsed = response.json()
+                    result["json_type"] = type(parsed).__name__
+                    result["json_keys"] = sorted(parsed.keys()) if isinstance(parsed, dict) else []
+                    if isinstance(parsed, dict):
+                        result["json_list_lengths"] = {
+                            key: len(value) for key, value in parsed.items() if isinstance(value, list)
+                        }
+                except ValueError:
+                    result["json_type"] = "not_json"
             results.append(result)
             print(f"{label}: status={response.status_code} elapsed={elapsed}s bytes={len(response.content)}", flush=True)
             if response.status_code == 429:
