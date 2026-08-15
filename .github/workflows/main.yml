@@ -25,6 +25,11 @@ on:
         required: false
         type: boolean
         default: false
+      run_direct_old_reddit:
+        description: "Probe old.reddit.com JSON directly without ScraperAPI"
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   offline-tests:
@@ -39,6 +44,28 @@ jobs:
         run: python -m pip install -r requirements.txt
       - name: Run offline unit tests
         run: python -m unittest discover -s tests -v
+
+  direct-old-reddit-json:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_direct_old_reddit == true }}
+    needs: offline-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Run direct old Reddit JSON probe
+        run: python scripts/direct_old_reddit_probe.py --output-dir artifacts/direct-old-reddit --timeout 30
+      - name: Upload direct Reddit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: direct-old-reddit-${{ github.run_id }}
+          path: artifacts/direct-old-reddit/
+          if-no-files-found: error
 
   optional-network-search:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_network == true }}
