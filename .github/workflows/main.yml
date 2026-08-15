@@ -94,11 +94,17 @@ jobs:
           REDDIT_RETRIES: "0"
           SCRAPER_API_KEYS_JSON: ${{ secrets.SCRAPER_API_KEYS_JSON }}
         run: python test_runner.py --query "vibe coding trap why building assisted" --provider scraperapi --pages 1 --posts-per-page 5 --comments-limit 20 --output-dir artifacts/scrapy-sample
+      - name: Inspect returned HTML with Scrapy
+        env:
+          SCRAPER_API_KEYS_JSON: ${{ secrets.SCRAPER_API_KEYS_JSON }}
+        run: python scripts/scrapy_html_probe.py --output-dir artifacts/scrapy-html-probe --timeout 70
       - name: Upload Scrapy evidence sample
         uses: actions/upload-artifact@v4
         with:
           name: scrapy-html-sample-${{ github.run_id }}
-          path: artifacts/scrapy-sample/
+          path: |
+            artifacts/scrapy-sample/
+            artifacts/scrapy-html-probe/
           if-no-files-found: error
 
   optional-network-search:
